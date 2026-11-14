@@ -1,5 +1,5 @@
 // Funciona sem internet depois da primeira vez. Sempre tenta a versão nova primeiro.
-const CACHE = 'lunerb-v2-001';
+const CACHE = 'lunerb-v2-002';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png',
@@ -15,8 +15,11 @@ self.addEventListener('activate', (e) => {
 });
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // sempre pergunta ao servidor se há versão nova (para as atualizações aparecerem logo)
+  const same = new URL(e.request.url).origin === self.location.origin;
+  const req = same ? fetch(e.request.url, { cache: 'no-cache' }) : fetch(e.request);
   e.respondWith(
-    fetch(e.request).then((res) => {
+    req.then((res) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
       return res;
