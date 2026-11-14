@@ -24,7 +24,13 @@ export class UI {
     $('vignette').classList.toggle('hidden', !on);
   }
 
-  hud({ hp, maxHp, crystals, turbo }) {
+  setControls({ attack = true, turbo = true } = {}) {
+    $('btn-attack').classList.toggle('hidden', !attack);
+    $('btn-turbo').classList.toggle('hidden', !turbo);
+  }
+
+  hud({ hp, maxHp, crystals, turbo, showCrystals = true }) {
+    $('crystals').classList.toggle('hidden', !showCrystals);
     const h = $('hearts');
     if (h.childElementCount !== maxHp) { h.innerHTML = ''; for (let i = 0; i < maxHp; i++) { const d = document.createElement('div'); d.className = 'heart'; h.appendChild(d); } }
     [...h.children].forEach((d, i) => d.classList.toggle('off', i >= hp));
@@ -68,8 +74,9 @@ export class UI {
     this.bigT = setTimeout(() => (b.className = cls), ms);
   }
 
-  flash() {
+  flash(color) {
     const f = $('flash');
+    f.style.background = color === 'green' ? '#5cff4a' : '#ff0000';
     f.classList.add('on');
     requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on')));
   }

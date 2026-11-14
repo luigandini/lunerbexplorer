@@ -11,7 +11,7 @@ export const UPGRADES = {
 export function newSave() {
   return {
     v: SAVE_VERSION,
-    unlocked: 1,          // maior fase liberada
+    unlocked: 0,          // maior fase liberada (0 = só o prólogo)
     stars: {},            // { [faseId]: [terminou, semDano, segredo] }
     crystals: 0,
     upgrades: { fogo: 0, rapidez: 0, laser: 0 },
@@ -28,7 +28,7 @@ export function normalizeSave(raw) {
   if (!raw || typeof raw !== 'object') return base;
   const s = { ...base, ...raw, upgrades: { ...base.upgrades, ...(raw.upgrades || {}) } };
   s.v = SAVE_VERSION;
-  s.unlocked = clampInt(s.unlocked, 1, 99, 1);
+  s.unlocked = clampInt(s.unlocked, 0, 99, 0);
   s.crystals = clampInt(s.crystals, 0, 99999, 0);
   s.weapons = clampInt(s.weapons, 0, 2, 0);
   for (const k of Object.keys(UPGRADES)) {

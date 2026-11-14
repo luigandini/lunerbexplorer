@@ -1,10 +1,10 @@
 // Funciona sem internet depois da primeira vez. Sempre tenta a versão nova primeiro.
-const CACHE = 'lunerb-v1-001';
+const CACHE = 'lunerb-v2-001';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png',
   'vendor/three.module.min.js',
-  'src/main.js', 'src/game.js', 'src/world.js', 'src/models.js', 'src/fx.js',
+  'src/main.js', 'src/game.js', 'src/world.js', 'src/models.js', 'src/fx.js', 'src/geo.js', 'src/textures.js', 'src/props.js',
   'src/input.js', 'src/ui.js', 'src/audio.js', 'src/levels.js', 'src/progress.js', 'src/save.js',
 ];
 self.addEventListener('install', (e) => {

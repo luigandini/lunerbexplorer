@@ -59,7 +59,7 @@ button { font-family: inherit; cursor: pointer; border: 0; color: #fff; }
 
 /* ---------- telas ---------- */
 .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.title-wrap { text-align: center; position: absolute; right: 6vw; top: 50%; transform: translateY(-50%); }
+.title-wrap { text-align: center; position: absolute; right: 5vw; top: 50%; transform: translateY(-50%); }
 #logo { font-size: 68px; margin: 0; letter-spacing: 6px; color: #ff3a2a; text-shadow: 0 0 18px #ff2a00, 0 5px 0 #400; font-weight: 900; }
 .sub { margin: 0 0 18px; color: #c9b8ff; letter-spacing: 1px; }
 .credits { margin-top: 14px; font-size: 15px; color: #ffe08a; }
@@ -71,8 +71,10 @@ button.corner { position: absolute; right: 16px; top: 14px; background: rgba(0,0
 .map-top { position: absolute; top: 10px; left: 14px; right: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .map-top h2 { margin: 0; font-size: 22px; text-shadow: 0 3px 0 #000; }
 .gemb { display: flex; align-items: center; gap: 8px; font-size: 18px; }
-#worlds { display: flex; gap: 10px; margin-top: 40px; padding: 0 12px; }
-.world { background: rgba(20,16,36,.85); border: 2px solid #ffffff22; border-radius: 16px; padding: 10px; width: 22vw; min-width: 140px; text-align: center; }
+#worlds { display: flex; gap: 8px; margin-top: 40px; padding: 0 10px; }
+.world { background: rgba(20,16,36,.85); border: 2px solid #ffffff22; border-radius: 16px; padding: 8px; width: 17.5vw; min-width: 118px; text-align: center; }
+.world.prologue { border-color: #5cff4a66; }
+.world.prologue .phase { background: #2f7a2a; box-shadow: 0 4px 0 #123a10; }
 .world h3 { margin: 0 0 8px; font-size: 14px; color: #c9b8ff; min-height: 34px; }
 .world.locked { opacity: .55; }
 .phase { display: block; width: 100%; margin: 6px 0; padding: 10px 6px; border-radius: 12px; background: #8a1a1a; font-weight: 900; font-size: 15px; box-shadow: 0 4px 0 #3a0808; }

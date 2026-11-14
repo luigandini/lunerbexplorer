@@ -1,4 +1,4 @@
-// Liga tudo: telas, história, mapa, Forja e o jogo.
+// Liga tudo: telas, mapa, Forja, prólogo e as fases.
 import * as THREE from '../vendor/three.module.min.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
@@ -6,117 +6,124 @@ import { Input } from './input.js';
 import { initAudio, playMusic, setSound, sfx } from './audio.js';
 import { loadSave, writeSave, getTestMode, setTestMode } from './save.js';
 import { WORLDS, LEVELS, getLevel, TOTAL_PHASES } from './levels.js';
-import { applyLevelResult, buyUpgrade, upgradeCost, UPGRADES, isUnlocked, countStars } from './progress.js';
-import { buildLunerb, vox } from './models.js';
+import { applyLevelResult, buyUpgrade, upgradeCost, UPGRADES, isUnlocked } from './progress.js';
+import { buildHero } from './models.js';
+import { tex } from './textures.js';
+import * as Props from './props.js';
+import { bake, roundedBox as rb } from './geo.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
 renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const ui = new UI();
 const input = new Input(document.body);
 const game = new Game({ renderer, ui, input });
+// ?baixa no endereço força o modo leve (sem sombras), para celulares bem simples
+if (/baixa/.test(location.search)) { game.lowQuality = true; renderer.shadowMap.enabled = false; renderer.setPixelRatio(1); }
 let save = loadSave();
 let testMode = getTestMode();
 let mode = 'menu'; // menu | game
 setSound(save.sound);
 
-// ---------------- cena dos menus e da história ----------------
+// ---------------- cena dos menus: uma maquetinha flutuante com o herói ----------------
 const menu = buildMenuScene();
 
 function buildMenuScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b0812);
-  const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
-  cam.position.set(0, 2.2, 6.2);
-  cam.lookAt(0, 0.8, 0);
-  scene.add(new THREE.AmbientLight(0x9a8fbf, 0.9));
-  const key = new THREE.PointLight(0xffb070, 9, 20, 1.2); key.position.set(-2.5, 5, 4); scene.add(key);
-  const rim = new THREE.PointLight(0xb070ff, 9, 20, 1.2); rim.position.set(3, 4, -2); scene.add(rim);
-  const floor = new THREE.Group();
-  const cols = [0x3a3638, 0x403b3d, 0x353133];
-  for (let x = -3; x <= 3; x++) for (let z = -2; z <= 2; z++) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(1, 0.3, 1), new THREE.MeshLambertMaterial({ color: cols[(x * 7 + z * 3 + 9) % 3] }));
-    m.position.set(x, -0.15, z); floor.add(m);
+  scene.background = tex('bgMenu');
+  const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+  scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x3a3020, 1.2));
+  const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
+  sun.position.set(-3, 6, 4); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4 });
+  scene.add(sun);
+  const rim = new THREE.PointLight(0xff5040, 6, 8, 1.4); rim.position.set(1.5, 1.6, -1); scene.add(rim);
+
+  // ilha
+  const island = new THREE.Group();
+  scene.add(island);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.3, 2.6), [0, 0, 0, 0, 0, 0].map((_, i) => new THREE.MeshLambertMaterial(i === 2 ? { map: tex('grass') } : { map: tex('stone') })));
+  top.position.y = -0.15; top.receiveShadow = true;
+  island.add(top);
+  const deco = new THREE.Group();
+  const r = (() => { let s = 77; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; })();
+  Props.tree(deco, -1.35, -0.85, r);
+  Props.rock(deco, 1.35, -0.8, r);
+  Props.bush(deco, 1.5, 0.75, r);
+  Props.flowers(deco, -1.2, 0.8, r);
+  Props.grassTuft(deco, -0.6, 0.9, r);
+  Props.grassTuft(deco, 0.9, -0.2, r);
+  Props.mushroom(deco, 1.0, 0.95, r);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const m = new THREE.Mesh(rb(0.7, 0.55, 0.7, 0.12), new THREE.MeshLambertMaterial({ map: tex('stone'), color: 0xb0aab0 }));
+    m.position.set(Math.cos(a) * 1.55, -0.5, Math.sin(a) * 1.05);
+    m.rotation.y = a;
+    island.add(m);
   }
-  scene.add(floor);
-  const water = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 5), new THREE.MeshBasicMaterial({ color: 0x3aff6a, transparent: true, opacity: 0.55 }));
-  water.position.y = 0.25; water.visible = false; scene.add(water);
-  const lun = buildLunerb();
-  lun.root.scale.setScalar(1.6);
-  scene.add(lun.root);
+  const under = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.6, 7), new THREE.MeshLambertMaterial({ color: 0x3d3940 }));
+  under.rotation.x = Math.PI; under.position.y = -1.3; under.scale.z = 0.7;
+  island.add(under);
+  bake(deco);
+  deco.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  island.add(deco);
+
+  const heroes = { lunerb: buildHero('lunerb'), lucas: buildHero('lucas') };
+  for (const h of Object.values(heroes)) { h.root.visible = false; island.add(h.root); }
   const bolts = [];
-  for (let i = 0; i < 14; i++) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), new THREE.MeshLambertMaterial({ color: i % 2 ? 0x8a2be2 : 0x111111, emissive: i % 2 ? 0x8a2be2 : 0x000000, emissiveIntensity: 1.5 }));
-    b.visible = false; scene.add(b); bolts.push(b);
+  for (let i = 0; i < 12; i++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x9a4bff : 0x222222 }));
+    island.add(b); bolts.push(b);
   }
-  return { scene, cam, lun, water, floor, bolts, pose: 'idle', key, rim, t: 0 };
+  return { scene, cam, island, heroes, bolts, pose: 'title', t: 0, rim };
 }
 
-function setPose(pose, bg) {
+function setPose(pose, hero = 'lunerb') {
   menu.pose = pose;
-  menu.scene.background.setHex(bg ?? 0x0b0812);
-  menu.water.visible = pose === 'fall';
-  menu.lun.guns[1].visible = save.weapons >= 1 || pose === 'title';
-  menu.lun.guns[0].visible = save.weapons >= 2 || pose === 'title';
+  for (const [k, h] of Object.entries(menu.heroes)) h.root.visible = k === hero;
+  const L = menu.heroes.lunerb;
+  L.guns[1].visible = save.weapons >= 1 || pose === 'title';
+  L.guns[0].visible = save.weapons >= 2 || pose === 'title';
 }
 
 function updateMenu(dt) {
   const m = menu;
   m.t += dt;
-  const L = m.lun;
-  L.root.rotation.set(0, 0, 0);
-  L.root.position.set(0, 0, 0);
-  L.body.rotation.set(0, 0, 0);
-  const sw = Math.sin(m.t * 7) * 0.7;
-  L.legs[0].rotation.x = 0; L.legs[1].rotation.x = 0;
-  L.arms[0].rotation.set(0, 0, 0); L.arms[1].rotation.set(0, 0, 0);
-  switch (m.pose) {
-    case 'title':
-      L.root.position.x = -2.2;
-      L.root.rotation.y = 0.5 + Math.sin(m.t * 0.6) * 0.25;
-      L.arms[0].rotation.x = -1.4; L.arms[1].rotation.x = -1.4;
-      L.arms[0].rotation.z = -0.25; L.arms[1].rotation.z = 0.25;
-      break;
-    case 'walk':
-      L.root.rotation.y = Math.PI / 2;
-      L.legs[0].rotation.x = sw; L.legs[1].rotation.x = -sw;
-      L.arms[0].rotation.x = -sw; L.arms[1].rotation.x = sw;
-      L.body.position.y = Math.abs(Math.sin(m.t * 7)) * 0.04;
-      break;
-    case 'fall':
-      L.root.position.y = -0.4 + Math.sin(m.t * 2) * 0.1;
-      L.root.rotation.z = 0.3;
-      L.arms[0].rotation.z = -2.4; L.arms[1].rotation.z = 2.4;
-      break;
-    case 'lying':
-      L.root.rotation.z = Math.PI / 2; L.root.position.set(0.9, 0.25, 0);
-      break;
-    case 'power':
-      L.root.rotation.y = m.t * 1.5;
-      L.arms[0].rotation.z = -0.6; L.arms[1].rotation.z = 0.6;
-      break;
-    case 'look':
-      L.root.rotation.y = Math.sin(m.t * 1.5) * 0.9;
-      break;
-    case 'hero':
-      L.root.rotation.y = 0.3;
-      L.arms[0].rotation.x = -1.4; L.arms[1].rotation.x = -1.4;
-      break;
-    default:
-      L.root.rotation.y = Math.sin(m.t * 0.5) * 0.4;
+  const aspect = innerWidth / innerHeight;
+  // a maquete fica à esquerda na tela inicial e no centro nas outras
+  const left = m.pose === 'title';
+  m.cam.aspect = aspect;
+  if (m.pose === 'closeup') { m.cam.position.set(0.5, 1.0, 2.2); m.cam.lookAt(0.05, 0.75, 0); }
+  else { m.cam.position.set(left ? 2.2 : 0, 2.6, 6.4); m.cam.lookAt(left ? 2.2 : 0, 0.35, 0); }
+  m.cam.updateProjectionMatrix();
+  m.island.position.y = Math.sin(m.t * 0.8) * 0.06;
+  m.island.rotation.y = -0.5 + Math.sin(m.t * 0.25) * 0.25;
+  const H = m.heroes[menu.heroes.lucas.root.visible ? 'lucas' : 'lunerb'];
+  H.root.position.set(0, 0, 0.1);
+  H.root.rotation.y = 0.35;
+  const sw = Math.sin(m.t * 2);
+  H.body.position.y = Math.abs(sw) * 0.01;
+  H.legs[0].rotation.x = 0; H.legs[1].rotation.x = 0;
+  if (m.pose === 'title' || m.pose === 'hero') {
+    H.arms[0].rotation.set(-1.35, 0, -0.15); H.arms[1].rotation.set(-1.35, 0, 0.15);
+  } else {
+    H.arms[0].rotation.set(sw * 0.1, 0, 0); H.arms[1].rotation.set(-sw * 0.1, 0, 0);
   }
-  const showBolts = m.pose === 'power' || m.pose === 'title';
+  H.head.rotation.y = Math.sin(m.t * 0.7) * 0.25;
   m.bolts.forEach((b, i) => {
-    b.visible = showBolts;
-    if (!showBolts) return;
-    const a = m.t * 3 + i * 0.9;
-    const cx = m.pose === 'title' ? -2.2 : 0;
-    b.position.set(cx + Math.cos(a) * 1.1, 0.4 + ((m.t * 1.5 + i * 0.37) % 2), Math.sin(a) * 1.1);
+    b.visible = m.pose === 'title';
+    const a = m.t * 2.5 + i * 0.52;
+    b.position.set(Math.cos(a) * 0.55, 0.3 + ((m.t * 0.9 + i * 0.3) % 1.4), 0.1 + Math.sin(a) * 0.55);
   });
-  m.key.intensity = m.pose === 'lying' ? 2 : 9;
 }
 
 // ---------------- telas ----------------
@@ -133,11 +140,22 @@ function showTitle() {
 function showMap() {
   mode = 'menu';
   ui.gameMode(false);
+  ui.fade(false);
   ui.show('scr-map');
-  setPose('idle');
+  setPose('idle', save.unlocked >= 1 ? 'lunerb' : 'lucas');
   $('map-crystals').textContent = save.crystals;
   const box = $('worlds');
   box.innerHTML = '';
+  // prólogo
+  const pro = document.createElement('div');
+  pro.className = 'world prologue';
+  pro.innerHTML = '<h3>Prólogo<br>A Floresta</h3>';
+  const pb = document.createElement('button');
+  pb.className = 'phase';
+  pb.innerHTML = `Jogar${save.unlocked >= 1 ? '<span class="st">✔</span>' : '<span class="st">▶</span>'}`;
+  pb.onclick = () => { sfx('clique'); startLevel(0); };
+  pro.appendChild(pb);
+  box.appendChild(pro);
   for (const w of WORLDS) {
     const div = document.createElement('div');
     div.className = `world${w.ready ? '' : ' locked'}`;
@@ -153,7 +171,7 @@ function showMap() {
       b.innerHTML = lvl
         ? `Fase ${id}${open ? '' : ' 🔒'}<span class="st">${stars}</span>`
         : `Fase ${id}<span class="st" style="font-size:11px;color:#888">em breve</span>`;
-      if (open) b.onclick = () => { sfx('clique'); beginLevel(id); };
+      if (open) b.onclick = () => { sfx('clique'); startLevel(id); };
       div.appendChild(b);
     }
     box.appendChild(div);
@@ -183,58 +201,34 @@ function showForge() {
     d.appendChild(btn);
     list.appendChild(d);
   }
-  $('forge-hint').textContent = save.weapons < 1
-    ? 'Primeiro encontre uma Booteshiscore na Fase 1!'
-    : 'Derrote monstros e abra baús para juntar cristais.';
+  $('forge-hint').textContent = save.weapons < 1 ? 'Primeiro encontre uma Booteshiscore na Fase 1!' : 'Derrote monstros e abra baús para juntar cristais.';
   $('btn-test-gems').classList.toggle('hidden', !testMode);
 }
 
-// ---------------- história ----------------
-const INTRO = [
-  { text: 'Num dia comum, o Lunerb caminhava tranquilo pela floresta...', pose: 'walk', bg: 0x10241a },
-  { text: 'De repente... SPLASH! Ele escorregou e caiu numa água tóxica que brilhava no escuro!', pose: 'fall', bg: 0x0a2a10 },
-  { text: 'Tudo ficou escuro... e o Lunerb desmaiou.', pose: 'lying', bg: 0x030303 },
-  { text: 'Mas a água deu a ele um poder misterioso: o RAIO NEGRO! ⚡', pose: 'power', bg: 0x18062c },
-  { text: 'Quando acordou, ele estava PRESO num castelo abandonado, cheio de monstros...', pose: 'look', bg: 0x1a0d0a },
-  { text: 'Agora ele só tem um objetivo: VOLTAR PRA CASA!', pose: 'hero', bg: 0x2a0a0a },
-];
+// ---------------- final do Mundo 1 ----------------
 const ENDING_W1 = [
-  { text: 'O Capitão de Ferro virou fumacinha e o portão se abriu!', pose: 'hero', bg: 0x2a0a0a },
-  { text: 'Pela primeira vez, o Lunerb viu o céu da noite lá fora.', pose: 'look', bg: 0x0a1030 },
-  { text: 'Mas a casa dele ainda está longe... e a floresta à frente sussurra coisas estranhas.', pose: 'walk', bg: 0x0c1a10 },
+  { text: 'O Capitão de Ferro virou fumacinha e o portão se abriu!' },
+  { text: 'Pela primeira vez, o Lunerb viu o céu da noite lá fora.' },
+  { text: 'Mas a casa dele ainda está longe... e a floresta à frente sussurra coisas estranhas.' },
 ];
-
 let story = null;
 function playStory(slides, done) {
   mode = 'menu';
   ui.gameMode(false);
   ui.show('scr-story');
+  setPose('hero');
   story = { slides, i: 0, done };
-  showSlide();
-}
-function showSlide() {
-  const s = story.slides[story.i];
-  $('story-text').textContent = s.text;
-  setPose(s.pose, s.bg);
+  $('story-text').textContent = slides[0].text;
 }
 $('scr-story').addEventListener('pointerdown', (e) => {
   if (e.target.id === 'btn-skip' || !story) return;
   sfx('clique');
   story.i++;
-  if (story.i >= story.slides.length) { const d = story.done; story = null; d(); } else showSlide();
+  if (story.i >= story.slides.length) { const d = story.done; story = null; d(); } else $('story-text').textContent = story.slides[story.i].text;
 });
 $('btn-skip').onclick = (e) => { e.stopPropagation(); if (!story) return; const d = story.done; story = null; d(); };
 
 // ---------------- jogar ----------------
-function beginLevel(id) {
-  if (id === 1 && !save.storySeen) {
-    playMusic('title');
-    playStory(INTRO, () => { save.storySeen = true; writeSave(save); startLevel(id); });
-    return;
-  }
-  startLevel(id);
-}
-
 function startLevel(id) {
   ui.fade(true);
   setTimeout(() => {
@@ -244,19 +238,22 @@ function startLevel(id) {
     input.reset();
     game.start(id, save, { testMode, onComplete: (res) => levelDone(id, res) });
     ui.fade(false);
-  }, 350);
+  }, 380);
 }
 
 function levelDone(id, res) {
   const def = getLevel(id);
   const firstClearW1 = id === 2 && !save.endingSeen;
   save = applyLevelResult(save, id, res, { weaponReward: def.weaponReward, totalLevels: TOTAL_PHASES });
-  // fases que ainda não existem não liberam
   save.unlocked = Math.min(save.unlocked, Math.max(...LEVELS.map((l) => l.id)));
   writeSave(save);
   game.running = false;
+  // prólogo: caiu no lago... e acorda no castelo
+  if (def.kind === 'prologo') {
+    setTimeout(() => startLevel(1), 900);
+    return;
+  }
   ui.gameMode(false);
-  const st = save.stars[id];
   const got = [res.finished, res.finished && res.damageTaken === 0, res.finished && res.secretFound];
   $('res-title').textContent = `${def.title} — completa!`;
   $('res-stars').innerHTML = got.map((g) => (g ? '★' : '<i>★</i>')).join('');
@@ -275,12 +272,11 @@ function levelDone(id, res) {
       playStory(ENDING_W1, () => { save.endingSeen = true; writeSave(save); showCredits(); });
     } else showMap();
   };
-  void st;
 }
 
 function showCredits() {
   ui.show('scr-credits');
-  setPose('hero', 0x120a1e);
+  setPose('hero');
   playMusic('ending');
 }
 
@@ -304,7 +300,7 @@ $('btn-play').onclick = () => {
   initAudio();
   sfx('clique');
   try { document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape')).catch(() => {}); } catch { /* ok */ }
-  showMap();
+  if (save.unlocked === 0 && !testMode) startLevel(0); else showMap();
 };
 $('btn-sound-title').onclick = () => { initAudio(); toggleSound(); $('btn-sound-title').textContent = save.sound ? '🔊' : '🔇'; };
 $('btn-map-back').onclick = () => { sfx('clique'); showTitle(); };
@@ -344,8 +340,6 @@ addEventListener('pointerdown', () => initAudio(), { once: true });
 // ---------------- laço ----------------
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
-  menu.cam.aspect = innerWidth / innerHeight;
-  menu.cam.updateProjectionMatrix();
   game.resize();
 });
 
@@ -354,9 +348,10 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (mode === 'game' && game.running) {
-    if (!ui.dialogOpen) game.update(dt); else game.animate(0);
+    if (!ui.dialogOpen) game.update(dt); else { game.animate(0); game.updateCamera(dt); }
     game.render();
   } else {
+    renderer.toneMappingExposure = 1.1;
     updateMenu(dt);
     renderer.render(menu.scene, menu.cam);
   }
@@ -371,5 +366,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // usado pelo teste automático no navegador
-window.__lunerb = { game, ui, renderer, get save() { return save; }, startLevel, showMap, beginLevel };
-void vox;
+window.__lunerb = { game, ui, renderer, menu, get save() { return save; }, startLevel, showMap };

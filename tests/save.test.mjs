@@ -20,12 +20,12 @@ test('salva e carrega no aparelho', () => {
 test('JSON corrompido não quebra o jogo', () => {
   const st = memStorage();
   st.setItem(SAVE_KEY, '{quebrado');
-  assert.equal(loadSave(st).unlocked, 1);
+  assert.equal(loadSave(st).unlocked, 0);
 });
 
 test('armazenamento bloqueado não quebra o jogo', () => {
   const boom = { getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } };
-  assert.equal(loadSave(boom).unlocked, 1);
+  assert.equal(loadSave(boom).unlocked, 0);
   assert.equal(writeSave({}, boom), false);
   assert.equal(getTestMode(boom), false);
 });

@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newSave, normalizeSave, computeStars, applyLevelResult, buyUpgrade, upgradeCost, isUnlocked, weaponStats } from '../src/progress.js';
 
-test('save novo começa só com a fase 1 liberada', () => {
+test('save novo começa só com o prólogo liberado', () => {
   const s = newSave();
-  assert.equal(s.unlocked, 1);
-  assert.ok(isUnlocked(s, 1));
+  assert.equal(s.unlocked, 0);
+  assert.ok(isUnlocked(s, 0));
+  assert.ok(!isUnlocked(s, 1));
   assert.ok(!isUnlocked(s, 2));
   assert.ok(isUnlocked(s, 2, true), 'modo teste libera tudo');
 });
@@ -13,7 +14,7 @@ test('save novo começa só com a fase 1 liberada', () => {
 test('save quebrado ou estranho vira um save válido', () => {
   for (const bad of [null, 'oi', 42, { unlocked: 'x', crystals: -5, weapons: 9, upgrades: { fogo: 99 } }]) {
     const s = normalizeSave(bad);
-    assert.ok(s.unlocked >= 1);
+    assert.ok(s.unlocked >= 0);
     assert.ok(s.crystals >= 0);
     assert.ok(s.weapons >= 0 && s.weapons <= 2);
     assert.ok(s.upgrades.fogo <= 3);
@@ -24,6 +25,12 @@ test('estrelas: terminar, sem dano e segredo', () => {
   assert.deepEqual(computeStars({ finished: true, damageTaken: 0, secretFound: true }), [true, true, true]);
   assert.deepEqual(computeStars({ finished: true, damageTaken: 2, secretFound: false }), [true, false, false]);
   assert.deepEqual(computeStars({ finished: false, damageTaken: 0, secretFound: true }), [false, false, false]);
+});
+
+test('terminar o prólogo libera a fase 1', () => {
+  const s = applyLevelResult(newSave(), 0, { finished: true, damageTaken: 2, crystals: 0 });
+  assert.equal(s.unlocked, 1);
+  assert.equal(s.weapons, 0);
 });
 
 test('terminar fase libera a próxima, dá a arma e soma cristais', () => {

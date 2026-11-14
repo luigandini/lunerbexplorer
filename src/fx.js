@@ -1,6 +1,8 @@
 // Efeitos visuais leves: fumacinha, faíscas, rastro do Turbo Negro, onda de choque.
 import * as THREE from '../vendor/three.module.min.js';
-import { mat } from './models.js';
+import { material } from './geo.js';
+
+const mat = (color, emissive) => material(color, emissive ? 'glow' : 'lit');
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const MAX = 220;

@@ -6,7 +6,10 @@ Jogo de aventura sombria em 3D (vista axonométrica, blocos), feito para o naveg
 Pode ser instalado na tela inicial ("Adicionar à tela inicial") e funciona sem internet depois da primeira vez.
 
 - Link para jogar: https://luigandini.github.io/lunerbexplorer/
-- História completa: 8 fases em 4 mundos. Esta versão (v1) tem o **Mundo 1: Fortaleza de Cinzarocha** (fases 1 e 2).
+- História completa: prólogo + 8 fases em 4 mundos. Esta versão (v2) tem o **Prólogo: A Floresta** e o **Mundo 1: Fortaleza de Cinzarocha** (fases 1 e 2).
+- Estilo: 3D estilizado em salas-maquete flutuantes (cada sala aparece inteira na tela).
+- Versão anterior (blocos/voxel), guardada: https://luigandini.github.io/lunerbexplorer/versao-01/
+- Celular muito simples travando? Abra com `?baixa` no fim do link (modo leve, sem sombras). O jogo também liga esse modo sozinho se perceber que está lento.
 
 ## Controles
 - Lado esquerdo da tela: arraste para andar
@@ -20,11 +23,13 @@ todas as fases liberadas, +100 cristais na Forja, e no menu de pausa: invencíve
 Toque 7 vezes de novo para desligar.
 
 ## Organização do código
-- `src/levels.js` – mapas e dados das fases (separados do código)
+- `src/levels.js` – salas e dados das fases (separados do código)
 - `src/progress.js` – estrelas, liberação de fases, Forja
 - `src/save.js` – progresso salvo no próprio aparelho
 - `src/game.js` – jogo (Lunerb, monstros, chefão)
-- `src/world.js`, `src/models.js`, `src/fx.js` – cenário, personagens em voxel, efeitos
+- `src/world.js`, `src/props.js`, `src/textures.js` – maquetes, árvores/pedras/tochas, texturas desenhadas pelo jogo
+- `src/models.js`, `src/geo.js` – personagens no estilo novo (Lunerb, Lucas, Feligon, Dait, monstros)
+- `src/legacy/models-voxel.js` – backup dos personagens em blocos
 - `src/audio.js` – música 8-bit e sons gerados pelo jogo
 - `vendor/three.module.min.js` – Three.js (licença MIT)
 

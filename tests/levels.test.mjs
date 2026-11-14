@@ -1,68 +1,94 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS } from '../src/levels.js';
+import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS, SOLID } from '../src/levels.js';
 
-const VALID = new Set('#.,LWTQCEBGSHPzasmK'.split(''));
+const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~O'.split(''));
 
-test('o jogo tem 8 fases planejadas em 4 mundos', () => {
+test('o jogo tem 8 fases planejadas em 4 mundos, mais o prólogo', () => {
   assert.equal(TOTAL_PHASES, 8);
   assert.equal(WORLDS.length, 4);
+  assert.equal(LEVELS[0].kind, 'prologo');
+  assert.equal(LEVELS[0].hero, 'lucas');
 });
 
 for (const L of LEVELS) {
-  test(`fase ${L.id}: mapa retangular, fechado e só com símbolos conhecidos`, () => {
-    const w = L.map[0].length;
-    L.map.forEach((row, y) => {
-      assert.equal(row.length, w, `linha ${y} tem ${row.length} em vez de ${w}`);
-      for (const c of row) assert.ok(VALID.has(c), `símbolo desconhecido "${c}" na linha ${y}`);
+  const P = parseLevel(L);
+
+  test(`${L.title}: salas retangulares e só com símbolos conhecidos`, () => {
+    assert.ok(L.rooms.length >= 3, 'poucas salas');
+    L.rooms.forEach((room, ri) => {
+      const w = room.map[0].length;
+      room.map.forEach((row, y) => {
+        assert.equal(row.length, w, `sala ${ri + 1}, linha ${y}: ${row.length} em vez de ${w}`);
+        for (const c of row) assert.ok(VALID.has(c), `símbolo "${c}" desconhecido na sala ${ri + 1}`);
+      });
+      assert.ok(w <= 15 && room.map.length <= 11, `sala ${ri + 1} grande demais para caber inteira na tela`);
     });
-    for (let x = 0; x < w; x++) { assert.equal(L.map[0][x], '#'); assert.equal(L.map[L.map.length - 1][x], '#'); }
-    for (const row of L.map) { assert.equal(row[0], '#'); assert.equal(row[w - 1], '#'); }
   });
 
-  test(`fase ${L.id}: tem início, saída, fogueira e dá pra chegar no fim`, () => {
-    const p = parseLevel(L);
-    assert.ok(p.start, 'sem início P');
-    assert.ok(p.exit, 'sem saída E');
-    assert.equal(L.map.join('').split('P').length - 1, 1, 'precisa de exatamente 1 início');
-    assert.equal(L.map.join('').split('E').length - 1, 1, 'precisa de exatamente 1 saída');
-    assert.ok(p.checkpoints.length >= 1, 'precisa de pelo menos 1 fogueira azul');
-    const r = reachable(p);
-    assert.ok(r.has(p.exit.x, p.exit.y), 'a saída não é alcançável');
-    for (const c of p.checkpoints) assert.ok(r.has(c.x, c.y), `fogueira em ${c.x},${c.y} não alcançável`);
+  test(`${L.title}: início, entradas, portais e saída no lugar certo`, () => {
+    P.rooms.forEach((r, i) => {
+      assert.ok(r.entry, `sala ${i + 1} sem entrada`);
+      assert.equal(r.isStart, i === 0, `sala ${i + 1}: só a primeira tem P`);
+      const last = i === P.rooms.length - 1;
+      if (!last) assert.ok(r.portal, `sala ${i + 1} sem portal X`);
+      if (last && L.kind === 'fase') assert.ok(r.exit, 'última sala precisa da saída E');
+      if (last && L.kind === 'prologo') assert.ok(r.lake.length > 5, 'o prólogo termina no lago de lodo');
+    });
   });
 
-  test(`fase ${L.id}: baús normais e da arma alcançáveis; secreto só pela parede rachada`, () => {
-    const p = parseLevel(L);
-    const r = reachable(p);
-    const r2 = reachable(p, { openCracks: true });
-    const arma = p.chests.filter((c) => c.kind === 'arma');
-    assert.equal(arma.length, 1, 'cada fase do mundo 1 tem 1 Booteshiscore');
-    for (const c of p.chests.filter((c) => c.kind !== 'secreto')) assert.ok(r.has(c.x, c.y), `baú ${c.kind} em ${c.x},${c.y}`);
-    const sec = p.chests.filter((c) => c.kind === 'secreto');
-    assert.equal(sec.length, 1, 'precisa de 1 baú secreto (3ª estrela)');
-    assert.ok(!r.has(sec[0].x, sec[0].y), 'o secreto não pode ser fácil');
-    assert.ok(r2.has(sec[0].x, sec[0].y), 'o secreto precisa ser alcançável quebrando a parede');
+  test(`${L.title}: dá para atravessar todas as salas`, () => {
+    P.rooms.forEach((r, i) => {
+      const reach = reachable(r);
+      const goal = r.portal || r.exit;
+      if (goal) assert.ok(reach.has(goal.x, goal.y), `sala ${i + 1}: não chega no ${r.portal ? 'portal' : 'saída'}`);
+      if (r.lake.length) {
+        const near = r.lake.some((t) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach.has(t.x + dx, t.y + dy)));
+        assert.ok(near, 'precisa conseguir chegar na beira do lago');
+      }
+      for (const c of r.checkpoints) assert.ok(reach.has(c.x, c.y), `fogueira inalcançável na sala ${i + 1}`);
+      for (const c of r.chests.filter((c) => c.kind !== 'secreto')) assert.ok(reach.has(c.x, c.y), `baú ${c.kind} inalcançável na sala ${i + 1}`);
+      for (const s of r.spawners) assert.ok(reach.has(s.x, s.y), `saída de monstros presa na sala ${i + 1}`);
+    });
   });
 
-  test(`fase ${L.id}: monstros em lugares alcançáveis e longe do início`, () => {
-    const p = parseLevel(L);
-    const r = reachable(p, { openCracks: true });
-    assert.ok(p.enemies.length >= 8, 'poucos monstros');
-    for (const e of p.enemies) {
-      assert.ok(r.has(e.x, e.y), `${e.type} preso em ${e.x},${e.y}`);
-      assert.ok(Math.hypot(e.x - p.start.x, e.y - p.start.y) > 4, `${e.type} muito perto do início`);
-    }
+  test(`${L.title}: monstros alcançáveis e longe da entrada`, () => {
+    let total = 0;
+    P.rooms.forEach((r, i) => {
+      const reach = reachable(r, { openCracks: true });
+      for (const e of r.enemies) {
+        total++;
+        assert.ok(reach.has(e.x, e.y), `${e.type} preso na sala ${i + 1}`);
+        assert.ok(Math.hypot(e.x - r.entry.x, e.y - r.entry.y) > 3.5, `${e.type} muito perto da entrada da sala ${i + 1}`);
+      }
+      for (const s of r.spawners) assert.ok(Math.hypot(s.x - r.entry.x, s.y - r.entry.y) > 2.5, `monstros nascem em cima do Lucas na sala ${i + 1}`);
+    });
+    if (L.kind === 'fase') assert.ok(total >= 10, `poucos monstros: ${total}`);
+    else assert.ok(P.rooms.every((r) => r.spawners.length > 0), 'no prólogo os monstros perseguem em todas as salas');
   });
 
-  test(`fase ${L.id}: tem título, falas de abertura e recompensa de arma`, () => {
-    assert.ok(L.title && L.intro.length > 0);
-    assert.ok(L.weaponReward === L.id, 'fase 1 dá a 1ª arma, fase 2 dá a 2ª');
-  });
+  if (L.kind === 'fase') {
+    test(`${L.title}: 1 Booteshiscore, fogueira e 1 baú secreto escondido`, () => {
+      const chests = P.rooms.flatMap((r) => r.chests.map((c) => ({ ...c, r })));
+      assert.equal(chests.filter((c) => c.kind === 'arma').length, 1);
+      assert.ok(P.rooms.some((r) => r.checkpoints.length), 'precisa de fogueira azul');
+      const sec = chests.filter((c) => c.kind === 'secreto');
+      assert.equal(sec.length, 1);
+      assert.ok(!reachable(sec[0].r).has(sec[0].x, sec[0].y), 'o secreto não pode ser fácil');
+      assert.ok(reachable(sec[0].r, { openCracks: true }).has(sec[0].x, sec[0].y), 'o secreto abre quebrando a parede');
+      assert.equal(L.weaponReward, L.id);
+      assert.ok(L.intro.length);
+    });
+  }
 }
 
-test('fase 2 tem o Capitão de Ferro e ele é alcançável', () => {
-  const p = parseLevel(LEVELS.find((l) => l.id === 2));
-  assert.ok(p.boss);
-  assert.ok(reachable(p).has(p.boss.x, p.boss.y));
+test('a Fase 2 termina na arena do Capitão de Ferro', () => {
+  const P = parseLevel(LEVELS.find((l) => l.id === 2));
+  const last = P.rooms[P.rooms.length - 1];
+  assert.ok(last.boss);
+  assert.ok(reachable(last).has(last.boss.x, last.boss.y));
+});
+
+test('a lava e o lago contam como obstáculo', () => {
+  assert.ok(SOLID.has('~'));
 });

@@ -1,171 +1,248 @@
-// Monta o cenário 3D (blocos) a partir do mapa da fase.
+// Monta cada sala como uma MAQUETE FLUTUANTE: chão com textura, bordas de pedra, musgo, objetos.
 import * as THREE from '../vendor/three.module.min.js';
-import { mat, vox, bake, buildBau, buildCoracao } from './models.js';
+import { roundedBox as rb, part, bake } from './geo.js';
+import { tex } from './textures.js';
+import * as P from './props.js';
+import { buildCoracao } from './models.js';
 
-const BOX = new THREE.BoxGeometry(1, 1, 1);
-const WALL_H = 1.25;
+const PX = 32; // pixels por quadradinho na textura do chão
 
 function rand(seed) {
   let s = seed;
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 }
 
-function instanced(list, material, sy, y) {
-  const mesh = new THREE.InstancedMesh(BOX, material, Math.max(1, list.length));
-  const m = new THREE.Matrix4();
-  const c = new THREE.Color();
-  list.forEach((it, i) => {
-    m.makeScale(it.sx || 1, it.sy || sy, it.sz || 1);
-    m.setPosition(it.x, it.y ?? y, it.z);
+// Desenha o chão inteiro da sala numa textura só (trilhas, musgo, grama)
+function groundTexture(room, theme, r) {
+  const c = document.createElement('canvas');
+  c.width = room.w * PX; c.height = room.h * PX;
+  const ctx = c.getContext('2d');
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
+      const t = room.tiles[y][x];
+      let name;
+      if (theme === 'castle') name = t === ',' ? 'cobbleMoss' : 'cobble';
+      else name = (t === '.' || t === 'X' || t === 'E') ? 'dirt' : 'grass';
+      const img = tex(name).image;
+      ctx.drawImage(img, (x * PX) % 256, (y * PX) % 256, PX, PX, x * PX, y * PX, PX, PX);
+    }
+  }
+  // bordas suaves: manchas de grama sobre a trilha / musgo sobre a pedra
+  for (let i = 0; i < room.w * room.h * 0.6; i++) {
+    const x = r() * c.width, y = r() * c.height;
+    ctx.fillStyle = theme === 'forest' ? `rgba(70,${110 + r() * 40},45,0.35)` : `rgba(60,${80 + r() * 30},50,0.18)`;
+    ctx.beginPath(); ctx.ellipse(x, y, 4 + r() * 10, 3 + r() * 7, r() * 3, 0, 7); ctx.fill();
+  }
+  const g = ctx.createRadialGradient(c.width / 2, c.height / 2, Math.min(c.width, c.height) * 0.3, c.width / 2, c.height / 2, Math.max(c.width, c.height) * 0.7);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+function instanced(geo, mat, items, { cast = true, receive = true } = {}) {
+  const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, items.length));
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+  items.forEach((it, i) => {
+    e.set(it.rx || 0, it.ry || 0, it.rz || 0);
+    q.setFromEuler(e);
+    m.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.sx || 1, it.sy || 1, it.sz || 1));
     mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, c.setHex(it.color));
+    mesh.setColorAt(i, c.setHex(it.color || 0xffffff));
   });
-  mesh.count = list.length;
-  mesh.instanceMatrix.needsUpdate = true;
+  mesh.count = items.length;
+  mesh.castShadow = cast; mesh.receiveShadow = receive;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   return mesh;
 }
 
-export function buildWorld(parsed, scene, levelId) {
-  const r = rand(levelId * 9973 + 7);
-  const group = new THREE.Group();
-  scene.add(group);
-  const floors = [], walls = [], lavas = [], mossy = [], webs = [], details = [];
-  const stone = [0x3a3638, 0x403b3d, 0x353133, 0x3d3739];
-  const wallC = [0x5b5658, 0x645e60, 0x544f51, 0x5f5a5c];
+let SHARED = null;
+function shared() {
+  if (!SHARED) {
+    SHARED = {
+      stone: new THREE.MeshLambertMaterial({ map: tex('stone') }),
+      wall: new THREE.MeshLambertMaterial({ map: tex('stone') }),
+      moss: new THREE.MeshLambertMaterial({ color: 0x4f8a2e }),
+      lava: new THREE.MeshBasicMaterial({ color: 0xff6a18 }),
+      lodo: new THREE.MeshBasicMaterial({ color: 0x1fa82a }),
+      bubble: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      web: new THREE.MeshBasicMaterial({ color: 0xe8e8f0, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }),
+      under: new THREE.MeshLambertMaterial({ color: 0x3d3940 }),
+      blockGeo: rb(1, 1, 1, 0.14, 2),
+      wallGeo: rb(0.98, 1.1, 0.98, 0.09, 2),
+      lowWallGeo: rb(0.98, 0.42, 0.98, 0.09, 2),
+      capGeo: rb(1.02, 0.12, 1.02, 0.05, 2),
+      tileGeo: new THREE.BoxGeometry(1, 0.06, 1),
+      webGeo: new THREE.PlaneGeometry(1, 0.8),
+    };
+  }
+  return SHARED;
+}
 
-  for (let y = 0; y < parsed.h; y++) {
-    for (let x = 0; x < parsed.w; x++) {
-      const t = parsed.tiles[y][x];
+const MOSS = [0x4f8a2e, 0x5c9a36, 0x447a28];
+
+export function buildRoom(room, theme, offset, seed) {
+  const r = rand(seed * 7919 + 13);
+  const S = shared();
+  const group = new THREE.Group();
+  group.position.set(offset.x, 0, offset.z);
+  const W = room.w, H = room.h;
+
+  // chão
+  const topMat = new THREE.MeshLambertMaterial({ map: groundTexture(room, theme, r) });
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.3, H), [S.stone, S.stone, topMat, S.stone, S.stone, S.stone]);
+  floor.position.set(W / 2, -0.15, H / 2);
+  floor.receiveShadow = true;
+  group.add(floor);
+
+  // bordas da ilha: blocos de pedra empilhados + musgo pendurado
+  const cliff = [], drips = [];
+  const base = theme === 'forest' ? 0x9a948f : 0x8c8690;
+  const shade = (k) => new THREE.Color(base).multiplyScalar(k).getHex();
+  const edge = (x, z, nx, nz) => {
+    const k = 0.8 + r() * 0.25;
+    cliff.push({ x: x + nx * 0.06, y: -0.42, z: z + nz * 0.06, sx: 1.04, sy: 0.55 + r() * 0.15, sz: 1.04, color: shade(k), ry: (r() - 0.5) * 0.1 });
+    cliff.push({ x: x - nx * 0.08, y: -0.95, z: z - nz * 0.08, sx: 0.92, sy: 0.55, sz: 0.92, color: shade(k * 0.82) });
+    if (r() < 0.55) cliff.push({ x: x - nx * 0.3, y: -1.45 - r() * 0.2, z: z - nz * 0.3, sx: 0.7, sy: 0.6, sz: 0.7, color: shade(0.6), ry: r() * 2 });
+    if (r() < 0.5) drips.push({ x: x + nx * 0.52, y: -0.25 - r() * 0.2, z: z + nz * 0.52, sx: nx ? 0.08 : 0.4 + r() * 0.4, sy: 0.35 + r() * 0.4, sz: nz ? 0.08 : 0.4 + r() * 0.4, color: MOSS[Math.floor(r() * 3)] });
+  };
+  for (let x = 0; x < W; x++) { edge(x + 0.5, 0.5, 0, -1); edge(x + 0.5, H - 0.5, 0, 1); }
+  for (let z = 0; z < H; z++) { edge(0.5, z + 0.5, -1, 0); edge(W - 0.5, z + 0.5, 1, 0); }
+  group.add(instanced(S.blockGeo, S.stone, cliff, { receive: false }));
+  group.add(instanced(S.blockGeo, S.moss, drips, { cast: false, receive: false }));
+  const m = Math.min(W, H);
+  const under = new THREE.Mesh(new THREE.CylinderGeometry(m * 0.42, m * 0.12, 2.2, 7), S.under);
+  under.position.set(W / 2, -2.1, H / 2);
+  under.scale.set(W / m, 1, H / m);
+  group.add(under);
+
+  // paredes (as da frente ficam baixas para não esconder o herói)
+  const walls = [], lows = [], caps = [];
+  const statics = new THREE.Group();
+  const lavaTiles = [], lodoTiles = [], webs = [], bubbles = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const t = room.tiles[y][x];
       const cx = x + 0.5, cz = y + 0.5;
       if (t === '#') {
-        const moss = r() < 0.14;
-        walls.push({ x: cx, z: cz, color: moss ? 0x4f5e3e : wallC[Math.floor(r() * 4)] });
-        // borda de cima um pouco mais clara (dá leitura do 3D)
-        details.push({ x: cx, z: cz, y: WALL_H + 0.04, sy: 0.08, sx: 1.0, sz: 1.0, color: moss ? 0x5f7a43 : 0x6e6769 });
-      } else if (t === 'L') {
-        lavas.push({ x: cx, z: cz, color: r() < 0.25 ? 0xffb030 : 0xff5a10 });
-      } else {
-        const isMoss = t === ',';
-        floors.push({ x: cx, z: cz, color: isMoss ? 0x3b4a2c : stone[Math.floor(r() * 4)] });
-        if (isMoss || r() < 0.06) mossy.push({ x: cx + (r() - 0.5) * 0.5, z: cz + (r() - 0.5) * 0.5, y: 0.03, sx: 0.3, sy: 0.06, sz: 0.3, color: 0x4e7a2e });
-        if (r() < 0.04) details.push({ x: cx + (r() - 0.5) * 0.6, z: cz + (r() - 0.5) * 0.6, y: 0.06, sx: 0.12, sy: 0.12, sz: 0.12, color: 0x5a5254 });
-        if (t === 'W') webs.push({ x: cx, z: cz });
+        const front = y === H - 1 || x === W - 1;
+        const col = new THREE.Color(0xc2bcc6).multiplyScalar(0.8 + r() * 0.28).getHex();
+        if (front) lows.push({ x: cx, y: 0.21, z: cz, color: col });
+        else walls.push({ x: cx, y: 0.55, z: cz, color: col });
+        if (r() < 0.45) caps.push({ x: cx, y: front ? 0.45 : 1.13, z: cz, sx: 0.9 + r() * 0.15, sz: 0.9 + r() * 0.15, color: MOSS[Math.floor(r() * 3)] });
+      } else if (t === 'L') lavaTiles.push({ x: cx, y: 0.01, z: cz, color: r() < 0.3 ? 0xffb030 : 0xff5a10 });
+      else if (t === '~') { lodoTiles.push({ x: cx, y: 0.02, z: cz, color: 0xffffff }); if (r() < 0.45) bubbles.push({ x: cx + (r() - 0.5) * 0.6, y: 0.07, z: cz + (r() - 0.5) * 0.6, sx: 0.08 + r() * 0.1, sy: 0.05, sz: 0.08 + r() * 0.1, color: 0x8dff6a }); }
+      else if (t === 'Y') P.tree(statics, cx, cz, r);
+      else if (t === 'R') P.rock(statics, cx, cz, r);
+      else if (t === 'U') P.bush(statics, cx, cz, r);
+      else if (t === 'g') P.grassTuft(statics, cx, cz, r);
+      else if (t === 'f') P.flowers(statics, cx, cz, r);
+      else if (t === 'W') webs.push({ x: cx, z: cz });
+      else if (t === '.' || t === ',') {
+        const v = r();
+        if (theme === 'forest') {
+          if (t === ',' && v < 0.22) P.grassTuft(statics, cx + (r() - 0.5) * 0.6, cz + (r() - 0.5) * 0.6, r);
+          else if (v < 0.27) P.flowers(statics, cx, cz, r);
+          else if (v < 0.31) P.mushroom(statics, cx + (r() - 0.5) * 0.6, cz + (r() - 0.5) * 0.6, r);
+          else if (t === '.' && v < 0.4) P.pebbles(statics, cx, cz, r);
+        } else {
+          const nearWall = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (room.tiles[y + dy] || [])[x + dx] === '#');
+          if (v < 0.05) P.bones(statics, cx, cz, r);
+          else if (nearWall && v < 0.1) P.barrel(statics, cx + (r() - 0.5) * 0.3, cz + (r() - 0.5) * 0.3, r);
+          else if (t === ',' && v < 0.35) P.grassTuft(statics, cx, cz, r);
+          else if (v < 0.14) P.pebbles(statics, cx, cz, r);
+        }
       }
     }
   }
-
-  group.add(instanced(floors, mat(0xffffff), 0.2, -0.1));
-  group.add(instanced(walls, mat(0xffffff), WALL_H, WALL_H / 2));
-  group.add(instanced(details, mat(0xffffff), 0.1, 0));
-  group.add(instanced(mossy, mat(0xffffff), 0.06, 0.03));
-  const lavaMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  group.add(instanced(lavas, lavaMat, 0.12, -0.08));
-
-  // teias
-  const webMat = mat(0xe8e8f0, 0.2, { opacity: 0.45 });
-  for (const w of webs) {
-    for (const rot of [Math.PI / 4, -Math.PI / 4]) {
-      const m = new THREE.Mesh(BOX, webMat);
-      m.scale.set(1.0, 0.75, 0.03);
-      m.position.set(w.x, 0.38, w.z);
-      m.rotation.y = rot;
-      group.add(m);
+  if (walls.length) group.add(instanced(S.wallGeo, S.wall, walls));
+  if (lows.length) group.add(instanced(S.lowWallGeo, S.wall, lows));
+  if (caps.length) group.add(instanced(S.capGeo, S.moss, caps, { receive: false }));
+  if (lavaTiles.length) group.add(instanced(S.tileGeo, S.lava, lavaTiles, { cast: false, receive: false }));
+  if (lodoTiles.length) {
+    group.add(instanced(S.tileGeo, S.lodo, lodoTiles, { cast: false, receive: false }));
+    group.add(instanced(new THREE.SphereGeometry(1, 8, 6), S.bubble, bubbles, { cast: false, receive: false }));
+    for (const t of room.lake) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = (room.tiles[t.y + dy] || [])[t.x + dx];
+      if (n && n !== '~' && r() < 0.5) P.pebbles(statics, t.x + 0.5 + dx * 0.45, t.y + 0.5 + dy * 0.45, r);
     }
   }
+  for (const w of webs) {
+    for (const rot of [Math.PI / 4, -Math.PI / 4]) {
+      const mw = new THREE.Mesh(S.webGeo, S.web);
+      mw.position.set(w.x, 0.4, w.z); mw.rotation.y = rot;
+      group.add(mw);
+    }
+  }
+  bake(statics);
+  statics.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+  group.add(statics);
 
-  // tochas
-  const torches = parsed.torches.map((t, i) => {
-    const g = new THREE.Group();
-    g.position.set(t.x + 0.5, 0, t.y + 0.5);
-    vox(g, 0x3a2a1c, 7, 22, 7, 0, 11, 0);
-    vox(g, 0x5c5c66, 12, 3, 12, 0, 23, 0);
-    const flame = new THREE.Group();
-    vox(flame, 0xff7a1a, 6, 6, 6, 0, 27, 0, 1.5);
-    vox(flame, 0xffd23a, 3.5, 4, 3.5, 0, 31, 0, 1.6);
-    g.add(flame);
-    const ember = vox(g, 0x6a2a10, 6, 1.5, 6, 0, 25, 0, 0.5);
-    bake(g);
-    group.add(g);
-    const lit = i % 2 === 0; // metade já começa acesa
-    flame.visible = lit;
-    return { x: t.x + 0.5, z: t.y + 0.5, tx: t.x, ty: t.y, lit, flame, ember, group: g };
+  // tochas (metade começa acesa)
+  const torches = room.torches.map((t, i) => {
+    const o = P.torch();
+    o.group.position.set(t.x + 0.5, 0, t.y + 0.5);
+    group.add(o.group);
+    const lit = i % 2 === 0;
+    o.flame.visible = lit;
+    return { lx: t.x + 0.5, lz: t.y + 0.5, tx: t.x, ty: t.y, lit, flame: o.flame, group: o.group };
   });
 
-  // paredes rachadas (segredo)
-  const cracks = parsed.cracks.map((c) => {
+  // paredes rachadas
+  const cracks = room.cracks.map((c) => {
     const g = new THREE.Group();
     g.position.set(c.x + 0.5, 0, c.y + 0.5);
-    const base = new THREE.Mesh(BOX, mat(0x585254));
-    base.scale.set(1, WALL_H, 1);
-    base.position.y = WALL_H / 2;
-    g.add(base);
-    for (const [a, b] of [[-6, 20], [-2, 16], [2, 12], [5, 8], [1, 24]]) {
-      vox(g, 0x1c1a1b, 2, 3, 25.4, a, b, 0);
-      vox(g, 0x1c1a1b, 25.4, 3, 2, 0, b, a);
+    part(g, rb(0.98, 1.1, 0.98, 0.09, 2), 0x7d7880, 'lit', 0, 0.55, 0);
+    for (const [a, b, rz] of [[-0.2, 0.75, 0.7], [0.05, 0.55, -0.5], [0.15, 0.32, 0.8], [-0.08, 0.95, -0.3]]) {
+      part(g, rb(0.32, 0.04, 0.03, 0.01), 0x151315, 'lit', a, b, 0.5, 0, 0, rz);
+      part(g, rb(0.03, 0.04, 0.32, 0.01), 0x151315, 'lit', 0.5, b, a, rz, 0, 0);
     }
     bake(g);
     group.add(g);
     return { tx: c.x, ty: c.y, hp: 3, broken: false, group: g };
   });
 
-  // fogueiras azuis (checkpoint)
-  const checkpoints = parsed.checkpoints.map((c) => {
-    const g = new THREE.Group();
-    g.position.set(c.x + 0.5, 0, c.y + 0.5);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      vox(g, 0x6a6a74, 5, 4, 5, Math.cos(a) * 8, 2, Math.sin(a) * 8);
-    }
-    vox(g, 0x3a2a1c, 10, 2, 3, 0, 3, 0);
-    vox(g, 0x3a2a1c, 3, 2, 10, 0, 3.5, 0);
-    const flame = new THREE.Group();
-    vox(flame, 0x2a8cff, 7, 8, 7, 0, 9, 0, 1.5);
-    vox(flame, 0x9fe0ff, 4, 6, 4, 0, 14, 0, 1.6);
-    g.add(flame);
-    flame.visible = false;
-    const smoke = new THREE.Group();
-    vox(smoke, 0x777777, 4, 4, 4, 0, 8, 0, 0.1);
-    g.add(smoke);
-    bake(g);
-    group.add(g);
-    return { x: c.x + 0.5, z: c.y + 0.5, active: false, flame, smoke, group: g };
+  const checkpoints = room.checkpoints.map((c) => {
+    const o = P.campfire();
+    o.group.position.set(c.x + 0.5, 0, c.y + 0.5);
+    group.add(o.group);
+    return { lx: c.x + 0.5, lz: c.y + 0.5, active: false, flame: o.flame, smoke: o.smoke, group: o.group };
   });
 
-  // baús
-  const chests = parsed.chests.map((c) => {
-    const b = buildBau(c.kind);
-    b.root.position.set(c.x + 0.5, 0, c.y + 0.5);
-    group.add(b.root);
-    return { ...c, wx: c.x + 0.5, wz: c.y + 0.5, open: false, lidT: 0, ...b };
+  const chests = room.chests.map((c) => {
+    const o = P.chest(c.kind);
+    o.group.position.set(c.x + 0.5, 0, c.y + 0.5);
+    o.group.rotation.y = (r() - 0.5) * 0.4;
+    group.add(o.group);
+    return { ...c, lx: c.x + 0.5, lz: c.y + 0.5, open: false, lidT: 0, lid: o.lid, group: o.group };
   });
 
-  // corações no chão
-  const hearts = parsed.hearts.map((h) => {
+  const hearts = room.hearts.map((h) => {
     const g = buildCoracao();
     g.position.set(h.x + 0.5, 0, h.y + 0.5);
     group.add(g);
-    return { x: h.x + 0.5, z: h.y + 0.5, taken: false, mesh: g };
+    return { lx: h.x + 0.5, lz: h.y + 0.5, taken: false, mesh: g };
   });
 
-  // saída: portal de pedra com portas
-  let exit = null;
-  if (parsed.exit) {
-    const g = new THREE.Group();
-    g.position.set(parsed.exit.x + 0.5, 0, parsed.exit.y + 0.5);
-    vox(g, 0x2a2628, 25, 2, 25, 0, 1, 0);
-    vox(g, 0x77707a, 5, 40, 5, -11, 20, 0);
-    vox(g, 0x77707a, 5, 40, 5, 11, 20, 0);
-    vox(g, 0x77707a, 27, 5, 6, 0, 42, 0);
-    const glow = vox(g, 0x7dff9a, 17, 34, 1, 0, 18, 0, 1.2, { opacity: 0.55 });
-    const bars = new THREE.Group();
-    for (let i = -2; i <= 2; i++) vox(bars, 0x3a3f46, 2, 38, 2, i * 4, 19, 0);
-    vox(bars, 0x3a3f46, 20, 2, 2, 0, 30, 0);
-    g.add(bars);
-    bake(g);
-    group.add(g);
-    exit = { x: parsed.exit.x + 0.5, z: parsed.exit.y + 0.5, group: g, glow, bars, locked: false };
-  }
+  const makeGate = (pt, final) => {
+    if (!pt) return null;
+    const o = P.portal(final);
+    o.group.position.set(pt.x + 0.5, 0, pt.y + 0.5);
+    if (pt.x === 0 || pt.x === W - 1) o.group.rotation.y = Math.PI / 2;
+    group.add(o.group);
+    return { lx: pt.x + 0.5, lz: pt.y + 0.5, ...o, locked: false };
+  };
+  const portal = makeGate(room.portal, false);
+  const exit = makeGate(room.exit, true);
 
-  return { group, lavaMat, torches, cracks, checkpoints, chests, hearts, exit, WALL_H };
+  if (!room.isStart) part(group, rb(0.8, 0.04, 0.8, 0.02), 0x8a8690, 'lit', room.entry.x + 0.5, 0.02, room.entry.y + 0.5);
+
+  return {
+    group, torches, cracks, checkpoints, chests, hearts, portal, exit,
+    center: new THREE.Vector3(offset.x + W / 2, 0, offset.z + H / 2),
+  };
 }
+
+export function sharedMaterials() { return shared(); }
