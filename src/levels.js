@@ -10,11 +10,12 @@
 //             B  baú de cristais   G  baú da Booteshiscore   S  baú secreto   H  coração
 //             J  baú com arma nova (bombas, choque...)   V  lugar onde o mercador misterioso pode aparecer
 //             P  início da fase    N  entrada da sala   X  portal para a próxima sala   E  saída da fase
-//             z  zumbi mutante   a  zumbi de armadura   s  aranha   m  morcego de brasa   K  Capitão de Ferro
+//             z  zumbi mutante   a  zumbi de armadura   s  aranha   m  morcego de brasa
+//             c  cogumelo-espora   e  planta-espinho   K  chefão da fase   F  casulo (Feligon preso)
 
 export const WORLDS = [
   { id: 1, name: 'Fortaleza de Cinzarocha', ready: true },
-  { id: 2, name: 'Bosque dos Sussurros', ready: false },
+  { id: 2, name: 'Bosque dos Sussurros', ready: true },
   { id: 3, name: 'Pântano do Lodo Negro', ready: false },
   { id: 4, name: 'Torre do Alquimista', ready: false },
 ];
@@ -226,18 +227,172 @@ export const LEVELS = [
       ] },
     ],
   },
+  {
+    id: 3,
+    kind: 'fase',
+    world: 2,
+    difficulty: 1.3,
+    title: 'Trilha das Raízes',
+    theme: 'forest',
+    light: 'forestNight',
+    hero: 'lunerb',
+    music: 'forest',
+    ambience: 'forestNight',
+    weaponReward: 2,
+    boss: 'maeteia',
+    intro: [
+      { who: 'Lunerb', text: 'Finalmente fora do castelo... mas essa floresta parece sussurrar.' },
+      { who: 'Lunerb', text: 'Ouvi alguém pedindo socorro lá no fundo do bosque!' },
+    ],
+    rooms: [
+      { name: 'Entrada do Bosque', map: [
+        'YYYYYYYYYYYYY',
+        'YP,,,,Y,,,c,Y',
+        'Y,,f,,,,,,,,Y',
+        'Y,,,R,,,T,,,X',
+        'Y,U,,,,c,,,,Y',
+        'Y,,,,Y,,,,,,Y',
+        'Y,T,,,,,,B,zY',
+        'Y,,,c,,,U,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Clareira dos Cogumelos', map: [
+        'YYYYYYYYYYYYY',
+        'YS,RY,,c,,,,Y',
+        'Y,,Q,,,,,s,,Y',
+        'YRRR,,U,,,,,Y',
+        'N,,,,,,,c,,,X',
+        'Y,,,,,,,,,,,Y',
+        'Y,Uc,,s,,R,,Y',
+        'Y,,,,H,,,,c,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Riacho Tóxico', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,,,~~,,,e,Y',
+        'Y,f,,~~,,,,,Y',
+        'N,,,,,,,,c,,Y',
+        'Y,,T,~~,,,,,Y',
+        'Y,,,,~~,,,T,X',
+        'Y,c,,~~,e,,,Y',
+        'Y,,,,~~,,,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Ninho Escuro', loot: 'turbina', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,W,,s,,W,JY',
+        'Y,WW,,,,,WW,Y',
+        'N,,,,C,,,,s,Y',
+        'Y,,,,,,,,,,,Y',
+        'Y,,W,,U,,W,,X',
+        'YV,WW,,s,WW,Y',
+        'Y,,s,,,,,,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Covil da Mãe-Teia', map: [
+        'YYYYYYYYYYYYYYY',
+        'Y,,W,,,,,,,W,FY',
+        'Y,W,,,,,,,,,W,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'N,,,,,,K,,,,,,E',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,W,,,,,,,,,W,Y',
+        'Y,,W,T,,,,T,W,Y',
+        'YYYYYYYYYYYYYYY',
+      ] },
+    ],
+  },
+  {
+    id: 4,
+    kind: 'fase',
+    world: 2,
+    difficulty: 1.45,
+    title: 'Coração do Bosque',
+    theme: 'forest',
+    light: 'forestNight',
+    hero: 'lunerb',
+    music: 'forest',
+    ambience: 'forestNight',
+    weaponReward: 2,
+    boss: 'anciao',
+    intro: [
+      { who: 'Feligon', text: 'O Ancião Oco era a árvore mais sábia do bosque... o lodo deixou ele bravo.' },
+      { who: 'Lunerb', text: 'Então vamos acordar ele! Juntos!' },
+    ],
+    rooms: [
+      { name: 'Raízes Antigas', map: [
+        'YYYYYYYYYYYYY',
+        'YP,,,R,,,,e,Y',
+        'Y,,,,,,,U,,,Y',
+        'Y,f,,,z,,,,,X',
+        'Y,,R,,,,,,,,Y',
+        'Y,,,,,,c,,R,Y',
+        'Y,e,,,,,,,,,Y',
+        'Y,,,U,,B,,,zY',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Lagoa Tóxica', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,,,,,,,,e,Y',
+        'Y,,~~~,,,,,,Y',
+        'N,,~~~,,c,,,Y',
+        'Y,,,,,,,~~,,Y',
+        'Y,,C,,,,~~,,X',
+        'Y,c,,,,H,,,,Y',
+        'Y,,,e,,,,,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Túnel de Galhos', loot: 'superbomba', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,,Y,,,,Y,SY',
+        'N,,,Y,s,,Y,,Y',
+        'Y,U,,,,Y,,QRY',
+        'Y,,,Y,,,Y,,,Y',
+        'Y,s,Y,,J,,,,Y',
+        'Y,,,,,,Y,z,,X',
+        'Y,c,,,Y,,,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Bosque Sombrio', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,m,,,,,T,,Y',
+        'Y,,,,U,,,,,,Y',
+        'N,,,,,,,,m,,Y',
+        'Y,,,R,,,c,,,Y',
+        'Y,,,,,,,,,,,X',
+        'YV,T,,e,,,,zY',
+        'Y,,,,,,,,,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Clareira do Ancião', map: [
+        'YYYYYYYYYYYYYYY',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,T,,,,,,,T,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'N,,,,,,K,,,,,,E',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,T,,,,,,,T,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'YYYYYYYYYYYYYYY',
+      ] },
+    ],
+  },
 ];
 
 export const SOLID = new Set(['#', 'T', 'Q', 'Y', 'R', 'U', '~']);
-export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego' };
+export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego', c: 'cogumelo', e: 'espinho' };
 export const ROOM_SPACING = 22; // distância entre as maquetes no "espaço"
 
-export function parseRoom(rows, index = 0, loot = null) {
+export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
   const h = rows.length;
   const w = rows[0].length;
   const out = {
     index, w, h, tiles: [], entry: null, isStart: false, portal: null, exit: null,
-    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null,
+    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null,
   };
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -248,7 +403,7 @@ export function parseRoom(rows, index = 0, loot = null) {
       else if (c === 'X') { out.portal = { x, y }; tile = 'X'; }
       else if (c === 'E') { out.exit = { x, y }; tile = 'E'; }
       else if (ENEMY_CHARS[c]) { out.enemies.push({ type: ENEMY_CHARS[c], x, y }); tile = '.'; }
-      else if (c === 'K') { out.boss = { type: 'capitao', x, y }; tile = '.'; }
+      else if (c === 'K') { out.boss = { type: bossType, x, y }; tile = '.'; }
       else if (c === 'B' || c === 'G' || c === 'S') {
         out.chests.push({ kind: c === 'B' ? 'cristais' : c === 'G' ? 'arma' : 'secreto', x, y });
         tile = '.';
@@ -256,6 +411,7 @@ export function parseRoom(rows, index = 0, loot = null) {
       else if (c === 'H') { out.hearts.push({ x, y }); tile = '.'; }
       else if (c === 'J') { out.chests.push({ kind: 'arma-nova', x, y }); tile = '.'; }
       else if (c === 'V') { out.merchant = { x, y }; tile = '.'; }
+      else if (c === 'F') { out.cocoon = { x, y }; tile = ','; }
       else if (c === 'C') { out.checkpoints.push({ x, y }); }
       else if (c === 'T') { out.torches.push({ x, y }); }
       else if (c === 'Q') { out.cracks.push({ x, y }); }
@@ -270,7 +426,7 @@ export function parseRoom(rows, index = 0, loot = null) {
 }
 
 export function parseLevel(level) {
-  return { id: level.id, rooms: level.rooms.map((r, i) => parseRoom(r.map, i, r.loot || null)) };
+  return { id: level.id, rooms: level.rooms.map((r, i) => parseRoom(r.map, i, r.loot || null, level.boss || 'capitao')) };
 }
 
 // Busca em largura: até onde o personagem chega andando a partir da entrada da sala.

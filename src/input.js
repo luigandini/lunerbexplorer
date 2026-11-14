@@ -50,7 +50,7 @@ export class Input {
     };
     hold(this.btnAttack, () => { this.attack = true; this.attackPressed = true; }, () => { this.attack = false; this.attackReleased = true; });
     hold(this.btnTurbo, () => { this.turboPressed = true; });
-    hold(this.btnSpecial, () => { this.specialPressed = true; });
+    hold(this.btnSpecial, () => { this.special = true; this.specialPressed = true; }, () => { this.special = false; this.specialReleased = true; });
 
     addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
@@ -58,12 +58,13 @@ export class Input {
       this.keys.add(k);
       if (k === 'j' || k === ' ') { this.attack = true; this.attackPressed = true; }
       if (k === 'k' || k === 'shift') this.turboPressed = true;
-      if (k === 'l') this.specialPressed = true;
+      if (k === 'l') { this.special = true; this.specialPressed = true; }
     });
     addEventListener('keyup', (e) => {
       const k = e.key.toLowerCase();
       this.keys.delete(k);
       if (k === 'j' || k === ' ') { this.attack = false; this.attackReleased = true; }
+      if (k === 'l') { this.special = false; this.specialReleased = true; }
     });
   }
 
@@ -92,11 +93,12 @@ export class Input {
 
   consume() {
     this.attackPressed = false; this.attackReleased = false;
-    this.turboPressed = false; this.specialPressed = false;
+    this.turboPressed = false; this.specialPressed = false; this.specialReleased = false;
   }
 
   reset() {
-    this.attack = false; this.jx = 0; this.jy = 0; this.stickId = null;
+    this.attack = false; this.special = false; this.jx = 0; this.jy = 0; this.stickId = null;
+    this.btnAttack.classList.remove('pressed'); this.btnSpecial.classList.remove('pressed');
     this.stickBase.classList.remove('on');
     this.consume();
   }

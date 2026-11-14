@@ -1,7 +1,7 @@
 // Personagens no estilo novo: 3D estilizado, cantos arredondados, cores fortes. Tudo original.
 // (Os personagens antigos em blocos estão guardados em src/legacy/models-voxel.js)
 import * as THREE from '../vendor/three.module.min.js';
-import { roundedBox as rb, sphere, cylinder, cone, capsule, part, pivot, bake, material } from './geo.js';
+import { roundedBox as rb, sphere, cylinder, cone, capsule, ico, part, pivot, bake, material } from './geo.js';
 
 const SKIN = 0xf0b98a;
 const HAIR = 0x5e3d22;
@@ -288,5 +288,111 @@ export function buildCristal() {
   m.position.y = 0.3;
   m.scale.y = 1.5;
   g.add(m);
+  return g;
+}
+
+// ---------- Mundo 2: Bosque dos Sussurros ----------
+
+// Cogumelo-espora: anda devagar e solta uma nuvem de esporos
+export function buildCogumelo() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  part(body, cylinder(0.12, 0.16, 0.34, 10), 0xe8dcc0, 'lit', 0, 0.2, 0);
+  part(body, sphere(0.04, 6, 4), 0x9dff3a, 'glow', -0.05, 0.25, 0.13);
+  part(body, sphere(0.04, 6, 4), 0x9dff3a, 'glow', 0.05, 0.25, 0.13);
+  part(body, rb(0.08, 0.02, 0.02, 0.008), 0x3a2a20, 'lit', 0, 0.17, 0.145);
+  const cap = pivot(body, 0, 0.38, 0);
+  part(cap, sphere(0.3, 14, 10), 0x8a2a8a, 'lit', 0, 0.02, 0, 0, 0, 0, 1, 0.55, 1);
+  for (const [x, z] of [[0.15, 0.1], [-0.12, 0.14], [0.02, -0.18], [-0.18, -0.06], [0.2, -0.08]]) part(cap, sphere(0.045, 6, 4), 0xf2e8ff, 'lit', x, 0.12, z);
+  const legs = [];
+  for (const sx of [-0.07, 0.07]) {
+    const leg = pivot(body, sx, 0.06, 0);
+    part(leg, rb(0.07, 0.08, 0.1, 0.03), 0xd8ccb0, 'lit', 0, -0.02, 0.02);
+    legs.push(leg);
+  }
+  bake(root);
+  return { root, body, cap, legs };
+}
+
+// Planta-espinho: fica parada e atira espinhos
+export function buildEspinho() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    part(body, cone(0.12, 0.42, 5), 0x2f7a2a, 'lit', Math.cos(a) * 0.18, 0.12, Math.sin(a) * 0.18, Math.sin(a) * 1.2, 0, -Math.cos(a) * 1.2);
+  }
+  part(body, cylinder(0.06, 0.09, 0.4, 7), 0x3f6b2a, 'lit', 0, 0.2, 0);
+  const head = pivot(body, 0, 0.45, 0);
+  part(head, sphere(0.22, 12, 10), 0x6a1a3a, 'lit', 0, 0, 0);
+  part(head, sphere(0.12, 10, 8), 0xff3a6a, 'glow', 0, 0, 0.14, 0, 0, 0, 1, 0.8, 0.6);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    part(head, cone(0.03, 0.16, 4), 0xe8d8a0, 'lit', Math.cos(a) * 0.2, Math.sin(a) * 0.2, -0.02, 0, 0, a - Math.PI / 2);
+  }
+  bake(root);
+  return { root, body, head, legs: [] };
+}
+
+// Mãe-Teia: aranha gigante coberta de musgo
+export function buildMaeTeia() {
+  const a = buildAranha();
+  part(a.body, rb(0.08, 0.14, 0.02, 0.01), 0xff2a2a, 'glow', 0, 0.38, -0.12);
+  for (let i = 0; i < 6; i++) part(a.body, cone(0.03, 0.12, 4), 0x3f6b2a, 'lit', (i - 2.5) * 0.06, 0.45, -0.3 + (i % 2) * 0.05, -0.3, 0, 0);
+  bake(a.root);
+  return a;
+}
+
+// Ancião Oco: árvore antiga que o lodo deixou brava
+export function buildAnciao() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  part(body, cylinder(0.32, 0.45, 1.3, 10), 0x5a3d22, 'lit', 0, 0.65, 0);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    part(body, cylinder(0.06, 0.13, 0.55, 6), 0x4a3018, 'lit', Math.cos(a) * 0.42, 0.1, Math.sin(a) * 0.42, Math.sin(a) * 1.2, 0, -Math.cos(a) * 1.2);
+  }
+  // rosto oco
+  part(body, sphere(0.09, 8, 6), 0x0d0a06, 'lit', -0.13, 0.95, 0.3);
+  part(body, sphere(0.09, 8, 6), 0x0d0a06, 'lit', 0.13, 0.95, 0.3);
+  part(body, sphere(0.05, 8, 6), 0x9dff3a, 'glow', -0.13, 0.95, 0.35);
+  part(body, sphere(0.05, 8, 6), 0x9dff3a, 'glow', 0.13, 0.95, 0.35);
+  part(body, sphere(0.12, 8, 6), 0x0d0a06, 'lit', 0, 0.68, 0.32, 0, 0, 0, 1.4, 0.6, 0.6);
+  part(body, rb(0.3, 0.05, 0.05, 0.02), 0x3a2410, 'lit', 0, 1.1, 0.33, 0, 0, 0.15);
+  // casca (armadura) que cai
+  const armorGroup = new THREE.Group();
+  body.add(armorGroup);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2;
+    part(armorGroup, rb(0.2, 0.5, 0.08, 0.03), 0x3a2814, 'lit', Math.cos(a) * 0.4, 0.45 + (i % 2) * 0.35, Math.sin(a) * 0.4, 0, -a + Math.PI / 2, 0);
+  }
+  const core = new THREE.Group();
+  part(core, sphere(0.16, 10, 8), 0x9dff3a, 'glow', 0, 0.55, 0.28);
+  body.add(core);
+  const arms = [];
+  for (const sx of [-1, 1]) {
+    const arm = pivot(body, sx * 0.32, 1.05, 0);
+    arm.rotation.z = sx * 0.6;
+    part(arm, cylinder(0.06, 0.1, 0.8, 6), 0x5a3d22, 'lit', sx * 0.35, 0.1, 0, 0, 0, sx * -1.2);
+    part(arm, cylinder(0.03, 0.05, 0.35, 5), 0x5a3d22, 'lit', sx * 0.7, 0.32, 0.05, 0, 0, sx * -0.4);
+    part(arm, ico(0.22, 1), 0x2f5a24, 'lit', sx * 0.75, 0.45, 0);
+    arms.push(arm);
+  }
+  for (const [x, y, z, r] of [[0, 1.55, 0, 0.6], [0.4, 1.4, 0.1, 0.42], [-0.4, 1.42, -0.1, 0.45], [0.05, 1.85, -0.05, 0.4]]) part(body, ico(r, 1), 0x2a4a20, 'lit', x, y, z);
+  const legs = [];
+  bake(root);
+  return { root, body, arms, legs, armorGroup, core };
+}
+
+// casulo de teia (o Feligon fica preso aqui)
+export function buildCasulo() {
+  const g = new THREE.Group();
+  part(g, sphere(0.35, 12, 10), 0xe8e8f0, 'lit', 0, 0.55, 0, 0, 0, 0, 0.9, 1.5, 0.9);
+  for (let i = 0; i < 6; i++) part(g, rb(0.72, 0.03, 0.03, 0.01), 0xc8c8d4, 'lit', 0, 0.2 + i * 0.13, 0, 0, i * 0.5, 0.3);
+  part(g, cylinder(0.01, 0.01, 1.2, 4), 0xe8e8f0, 'lit', 0, 1.4, 0);
+  bake(g);
   return g;
 }

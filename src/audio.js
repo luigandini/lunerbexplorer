@@ -1,33 +1,68 @@
-// Música 8-bit e efeitos sonoros gerados pelo próprio jogo (Web Audio). Nenhum arquivo de som.
+// Música 8-bit, efeitos e clima de suspense gerados pelo próprio jogo (Web Audio). Nenhum arquivo de som.
 
 let ctx = null;
-let master = null;
-let musicGain = null;
-let sfxGain = null;
+let master = null, musicGain = null, sfxGain = null, ambGain = null;
 let enabled = true;
 let noiseBuf = null;
+let wantedMusic = null;   // música pedida antes do som destravar
+let wantedAmb = null;
 
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
-export function initAudio() {
-  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+function create() {
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
-  if (!AC) return;
+  if (!AC) return false;
+  // iPhone: toca mesmo com a chave do silencioso (Safari 17+)
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* ok */ }
   ctx = new AC();
   master = ctx.createGain();
-  master.gain.value = enabled ? 0.6 : 0;
-  master.connect(ctx.destination);
-  musicGain = ctx.createGain(); musicGain.gain.value = 0.32; musicGain.connect(master);
-  sfxGain = ctx.createGain(); sfxGain.gain.value = 0.7; sfxGain.connect(master);
-  noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+  master.gain.value = enabled ? 0.8 : 0;
+  // compressor: deixa explosões fortes sem estourar
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 4;
+  master.connect(comp); comp.connect(ctx.destination);
+  musicGain = ctx.createGain(); musicGain.gain.value = 0.3; musicGain.connect(master);
+  sfxGain = ctx.createGain(); sfxGain.gain.value = 0.8; sfxGain.connect(master);
+  ambGain = ctx.createGain(); ambGain.gain.value = 0.5; ambGain.connect(master);
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return true;
 }
+
+// Celulares só liberam o som depois de um toque. Tentamos destravar a cada toque até conseguir.
+export function initAudio() {
+  if (!ctx && !create()) return;
+  if (ctx.state !== 'running') {
+    ctx.resume().then(afterUnlock).catch(() => {});
+    // som mudo de 1 amostra: destrava o iPhone
+    try {
+      const b = ctx.createBuffer(1, 1, 22050);
+      const s = ctx.createBufferSource();
+      s.buffer = b; s.connect(ctx.destination); s.start(0);
+    } catch { /* ok */ }
+  } else afterUnlock();
+}
+
+function afterUnlock() {
+  if (wantedMusic && current !== wantedMusic) { const m = wantedMusic; current = null; playMusic(m); }
+  if (wantedAmb && ambName !== wantedAmb) { const a = wantedAmb; ambName = null; playAmbience(a); }
+}
+
+export function bindUnlock(target = globalThis) {
+  const h = () => { if (!ctx || ctx.state !== 'running') initAudio(); };
+  for (const ev of ['touchstart', 'touchend', 'pointerdown', 'mousedown', 'click', 'keydown']) target.addEventListener(ev, h, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); });
+}
+
+export function audioState() { return ctx ? ctx.state : 'sem-som'; }
 
 export function setSound(on) {
   enabled = on;
-  if (master) master.gain.setTargetAtTime(on ? 0.6 : 0, ctx.currentTime, 0.05);
+  if (master) master.gain.setTargetAtTime(on ? 0.8 : 0, ctx.currentTime, 0.05);
 }
+
+const ready = () => ctx && enabled && ctx.state === 'running';
 
 function tone(freq, t, dur, type = 'square', vol = 0.2, dest = sfxGain, slideTo = null) {
   if (!ctx) return;
@@ -36,65 +71,159 @@ function tone(freq, t, dur, type = 'square', vol = 0.2, dest = sfxGain, slideTo 
   o.type = type;
   o.frequency.setValueAtTime(freq, t);
   if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(dest);
-  o.start(t); o.stop(t + dur + 0.02);
+  o.start(t); o.stop(t + dur + 0.05);
 }
 
-function noise(t, dur, vol = 0.2, dest = sfxGain, hp = 800) {
+// ruído filtrado (explosão, fogo, vento, rosnado)
+function noise(t, dur, vol = 0.2, dest = sfxGain, freq = 800, type = 'highpass', sweepTo = null, q = 0.7) {
   if (!ctx) return;
   const s = ctx.createBufferSource();
   s.buffer = noiseBuf;
+  s.loop = true;
   const f = ctx.createBiquadFilter();
-  f.type = 'highpass'; f.frequency.value = hp;
+  f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+  if (sweepTo) f.frequency.exponentialRampToValueAtTime(Math.max(20, sweepTo), t + dur);
   const g = ctx.createGain();
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   s.connect(f); f.connect(g); g.connect(dest);
-  s.start(t); s.stop(t + dur + 0.02);
+  s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
+}
+
+// voz de monstro: onda grave com vibrato passando por filtro
+function growl(t, dur, base, vol, wobble = 18) {
+  const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+  const f = ctx.createBiquadFilter(), g = ctx.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(base, t); o.frequency.linearRampToValueAtTime(base * 0.75, t + dur);
+  lfo.frequency.value = wobble; lg.gain.value = base * 0.18;
+  lfo.connect(lg); lg.connect(o.frequency);
+  f.type = 'lowpass'; f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(350, t + dur); f.Q.value = 6;
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(f); f.connect(g); g.connect(sfxGain);
+  o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+  noise(t, dur * 0.8, vol * 0.5, sfxGain, 500, 'bandpass', 250, 3);
 }
 
 // ---------- efeitos ----------
 const SFX = {
-  soco: (t) => { noise(t, 0.08, 0.35, sfxGain, 300); tone(140, t, 0.08, 'square', 0.15, sfxGain, 60); },
-  fogo: (t) => { tone(600, t, 0.15, 'sawtooth', 0.1, sfxGain, 180); noise(t, 0.12, 0.1, sfxGain, 2000); },
-  laser: (t) => { tone(1200, t, 0.4, 'square', 0.12, sfxGain, 200); tone(1210, t, 0.4, 'sawtooth', 0.06, sfxGain, 210); },
-  carga: (t) => { tone(300, t, 0.3, 'triangle', 0.08, sfxGain, 900); },
-  acerto: (t) => { tone(220, t, 0.06, 'square', 0.12, sfxGain, 110); },
-  puf: (t) => { noise(t, 0.3, 0.25, sfxGain, 500); tone(400, t, 0.2, 'triangle', 0.1, sfxGain, 80); },
-  clang: (t) => { tone(880, t, 0.5, 'square', 0.1); tone(1320, t, 0.4, 'triangle', 0.1); noise(t, 0.15, 0.2, sfxGain, 3000); },
+  soco: (t) => { noise(t, 0.09, 0.4, sfxGain, 600, 'lowpass', 150); tone(150, t, 0.09, 'square', 0.18, sfxGain, 55); },
+  fogo: (t) => { noise(t, 0.22, 0.25, sfxGain, 3000, 'bandpass', 600, 1.5); tone(520, t, 0.16, 'sawtooth', 0.09, sfxGain, 160); },
+  laser: (t) => { tone(1400, t, 0.45, 'square', 0.13, sfxGain, 180); tone(1410, t, 0.45, 'sawtooth', 0.08, sfxGain, 190); noise(t, 0.3, 0.12, sfxGain, 4000); },
+  carga: (t) => { tone(250, t, 0.35, 'triangle', 0.1, sfxGain, 1100); },
+  acerto: (t) => { tone(240, t, 0.07, 'square', 0.15, sfxGain, 110); noise(t, 0.05, 0.15, sfxGain, 2000); },
+  puf: (t) => { noise(t, 0.4, 0.35, sfxGain, 1200, 'lowpass', 200); tone(380, t, 0.25, 'triangle', 0.12, sfxGain, 70); },
+  clang: (t) => { tone(880, t, 0.6, 'square', 0.12); tone(1320, t, 0.5, 'triangle', 0.12); tone(1975, t, 0.35, 'sine', 0.08); noise(t, 0.15, 0.25, sfxGain, 4000); },
   cristal: (t) => { tone(1568, t, 0.08, 'square', 0.08); tone(2093, t + 0.06, 0.12, 'square', 0.08); },
-  coracao: (t) => { [523, 659, 784].forEach((f, i) => tone(f, t + i * 0.07, 0.12, 'triangle', 0.15)); },
-  bau: (t) => { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, t + i * 0.08, 0.18, 'square', 0.1)); },
-  dano: (t) => { tone(300, t, 0.25, 'sawtooth', 0.18, sfxGain, 80); },
-  fogueira: (t) => { [262, 392, 523, 784].forEach((f, i) => tone(f, t + i * 0.09, 0.3, 'triangle', 0.13)); },
-  turbo: (t) => { tone(100, t, 0.3, 'sawtooth', 0.15, sfxGain, 900); noise(t, 0.25, 0.15, sfxGain, 1500); },
-  tocha: (t) => { noise(t, 0.4, 0.15, sfxGain, 600); tone(200, t, 0.3, 'triangle', 0.08, sfxGain, 500); },
-  quebra: (t) => { noise(t, 0.4, 0.35, sfxGain, 200); tone(90, t, 0.3, 'square', 0.15, sfxGain, 40); },
-  pancada: (t) => { noise(t, 0.5, 0.4, sfxGain, 100); tone(60, t, 0.5, 'square', 0.2, sfxGain, 30); },
-  rugido: (t) => { tone(110, t, 0.8, 'sawtooth', 0.18, sfxGain, 70); tone(116, t, 0.8, 'square', 0.1, sfxGain, 72); },
+  coracao: (t) => { [523, 659, 784].forEach((f, i) => tone(f, t + i * 0.07, 0.14, 'triangle', 0.16)); },
+  bau: (t) => { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, t + i * 0.08, 0.2, 'square', 0.11)); },
+  dano: (t) => { tone(320, t, 0.28, 'sawtooth', 0.22, sfxGain, 80); noise(t, 0.12, 0.25, sfxGain, 800, 'lowpass'); },
+  fogueira: (t) => { [262, 392, 523, 784].forEach((f, i) => tone(f, t + i * 0.09, 0.35, 'triangle', 0.14)); },
+  turbo: (t) => { tone(90, t, 0.35, 'sawtooth', 0.2, sfxGain, 1000); noise(t, 0.3, 0.2, sfxGain, 600, 'bandpass', 5000, 2); },
+  tocha: (t) => { noise(t, 0.6, 0.25, sfxGain, 400, 'bandpass', 2500, 1); tone(180, t, 0.3, 'triangle', 0.1, sfxGain, 500); },
+  quebra: (t) => { noise(t, 0.6, 0.5, sfxGain, 1500, 'lowpass', 120); tone(85, t, 0.4, 'square', 0.2, sfxGain, 35); for (let i = 0; i < 4; i++) noise(t + 0.08 + i * 0.07, 0.06, 0.2, sfxGain, 2500); },
+  pancada: (t) => { noise(t, 0.7, 0.55, sfxGain, 400, 'lowpass', 60); tone(55, t, 0.6, 'sine', 0.4, sfxGain, 28); },
+  rugido: (t) => { growl(t, 1.1, 95, 0.32, 14); growl(t + 0.05, 1.0, 140, 0.18, 22); },
   clique: (t) => { tone(880, t, 0.05, 'square', 0.08); },
-  boom: (t) => { noise(t, 1.0, 0.6, sfxGain, 60); tone(70, t, 0.9, 'sawtooth', 0.3, sfxGain, 25); tone(140, t, 0.4, 'square', 0.15, sfxGain, 40); },
-  superboom: (t) => { noise(t, 2.0, 0.7, sfxGain, 40); tone(50, t, 1.8, 'sawtooth', 0.35, sfxGain, 18); tone(100, t + 0.15, 1.4, 'square', 0.2, sfxGain, 25); noise(t + 0.3, 1.2, 0.4, sfxGain, 200); },
-  lancar: (t) => { tone(300, t, 0.25, 'triangle', 0.1, sfxGain, 700); noise(t, 0.2, 0.08, sfxGain, 2500); },
-  mira: (t) => { tone(1200, t, 0.03, 'square', 0.04); },
-  choque: (t) => { for (let i = 0; i < 5; i++) tone(800 + Math.random() * 1600, t + i * 0.03, 0.05, 'square', 0.06); noise(t, 0.2, 0.15, sfxGain, 3000); },
-  trovao: (t) => { noise(t, 0.9, 0.5, sfxGain, 80); tone(90, t, 0.8, 'sawtooth', 0.2, sfxGain, 35); noise(t + 0.05, 0.15, 0.4, sfxGain, 4000); },
-  turbinaOn: (t) => { tone(80, t, 0.5, 'sawtooth', 0.2, sfxGain, 400); noise(t, 0.4, 0.2, sfxGain, 1500); },
-  turbinaOff: (t) => { tone(400, t, 0.4, 'sawtooth', 0.15, sfxGain, 60); },
-  mercador: (t) => { [659, 784, 988, 1319].forEach((f, i) => tone(f, t + i * 0.1, 0.4, 'triangle', 0.1)); },
-  compra: (t) => { [523, 784, 1047, 1568].forEach((f, i) => tone(f, t + i * 0.06, 0.15, 'square', 0.09)); },
-  porta: (t) => { tone(150, t, 0.6, 'square', 0.12, sfxGain, 300); noise(t, 0.6, 0.12, sfxGain, 400); },
+  porta: (t) => { tone(140, t, 0.7, 'square', 0.12, sfxGain, 280); noise(t, 0.7, 0.15, sfxGain, 300, 'bandpass', 900, 2); },
+  boom: (t) => {
+    noise(t, 1.6, 0.9, sfxGain, 3000, 'lowpass', 60);
+    tone(90, t, 1.2, 'sine', 0.55, sfxGain, 25);
+    tone(60, t, 1.4, 'sawtooth', 0.25, sfxGain, 20);
+    noise(t + 0.02, 0.25, 0.4, sfxGain, 5000);
+    for (let i = 0; i < 5; i++) noise(t + 0.2 + i * 0.13, 0.25, 0.18, sfxGain, 1800, 'bandpass', 700, 2); // estalos de fogo
+  },
+  superboom: (t) => {
+    noise(t, 3, 1, sfxGain, 4000, 'lowpass', 40);
+    tone(70, t, 2.6, 'sine', 0.6, sfxGain, 18);
+    tone(45, t + 0.1, 2.4, 'sawtooth', 0.3, sfxGain, 15);
+    noise(t + 0.4, 1.8, 0.5, sfxGain, 900, 'lowpass', 80);
+    for (let i = 0; i < 9; i++) noise(t + 0.3 + i * 0.18, 0.3, 0.2, sfxGain, 2000, 'bandpass', 600, 2);
+  },
+  lancar: (t) => { noise(t, 0.35, 0.18, sfxGain, 800, 'bandpass', 3000, 2); tone(300, t, 0.25, 'triangle', 0.08, sfxGain, 700); },
+  pavio: (t) => { noise(t, 0.12, 0.08, sfxGain, 6000); },
+  mira: (t) => { tone(1300, t, 0.03, 'square', 0.05); },
+  choque: (t) => { for (let i = 0; i < 6; i++) tone(600 + Math.random() * 2400, t + i * 0.025, 0.05, 'square', 0.07); noise(t, 0.25, 0.22, sfxGain, 3000, 'bandpass', 6000, 3); },
+  trovao: (t) => { noise(t, 0.05, 0.6, sfxGain, 6000); noise(t + 0.03, 1.6, 0.7, sfxGain, 1200, 'lowpass', 50); tone(70, t, 1.2, 'sine', 0.35, sfxGain, 30); },
+  turbinaOn: (t) => { tone(70, t, 0.6, 'sawtooth', 0.25, sfxGain, 420); noise(t, 0.5, 0.25, sfxGain, 300, 'bandpass', 3000, 2); },
+  turbinaOff: (t) => { tone(420, t, 0.5, 'sawtooth', 0.18, sfxGain, 50); },
+  mercador: (t) => { [659, 784, 988, 1319, 988].forEach((f, i) => tone(f, t + i * 0.11, 0.45, 'triangle', 0.11)); },
+  compra: (t) => { [523, 784, 1047, 1568].forEach((f, i) => tone(f, t + i * 0.06, 0.16, 'square', 0.1)); },
+  // vozes dos monstros
+  zumbi: (t) => growl(t, 0.7 + Math.random() * 0.4, 70 + Math.random() * 30, 0.2, 9 + Math.random() * 8),
+  zumbiBote: (t) => growl(t, 0.45, 120, 0.3, 25),
+  aranha: (t) => { noise(t, 0.35, 0.18, sfxGain, 5000, 'highpass'); for (let i = 0; i < 4; i++) noise(t + i * 0.05, 0.03, 0.12, sfxGain, 3500, 'bandpass', 3500, 5); },
+  morcego: (t) => { tone(2600, t, 0.12, 'square', 0.06, sfxGain, 1800); tone(3100, t + 0.08, 0.1, 'square', 0.05, sfxGain, 2200); },
+  cogumelo: (t) => { noise(t, 0.6, 0.25, sfxGain, 900, 'lowpass', 300); tone(200, t, 0.3, 'sine', 0.1, sfxGain, 90); },
+  espinho: (t) => { noise(t, 0.08, 0.2, sfxGain, 4000); tone(900, t, 0.08, 'square', 0.06, sfxGain, 400); },
+  arvore: (t) => { growl(t, 1.6, 55, 0.35, 5); noise(t, 1.2, 0.25, sfxGain, 300, 'lowpass', 100); for (let i = 0; i < 6; i++) noise(t + 0.2 + i * 0.15, 0.08, 0.15, sfxGain, 1500, 'bandpass', 800, 3); },
+  raizes: (t) => { noise(t, 0.6, 0.3, sfxGain, 300, 'lowpass', 900); for (let i = 0; i < 5; i++) noise(t + i * 0.08, 0.06, 0.15, sfxGain, 1200, 'bandpass', 600, 3); tone(330, t + 0.3, 0.4, 'triangle', 0.1, sfxGain, 660); },
+  amigo: (t) => { [392, 494, 587, 784].forEach((f, i) => tone(f, t + i * 0.08, 0.2, 'triangle', 0.13)); },
+  susto: (t) => { tone(1800, t, 0.5, 'sine', 0.05, sfxGain, 1700); tone(1907, t, 0.5, 'sine', 0.05, sfxGain, 1800); },
 };
 
 export function sfx(name) {
-  if (!ctx || !enabled || !SFX[name]) return;
+  if (!ready() || !SFX[name]) return;
   SFX[name](ctx.currentTime + 0.01);
 }
 
+// ---------- clima de suspense (fundo) ----------
+let ambName = null, ambNodes = [], ambTimer = null;
+const AMBIENCE = {
+  castle: { drone: [55, 82.4], wind: 300, events: ['gota', 'rangido', 'sussurro'] },
+  forest: { drone: [65.4, 98], wind: 700, events: ['grilo', 'coruja', 'galho'] },
+  forestNight: { drone: [49, 73.4], wind: 500, events: ['grilo', 'coruja', 'galho', 'sussurro'] },
+};
+const AMB_EVENTS = {
+  gota: (t) => { tone(1800 + Math.random() * 600, t, 0.15, 'sine', 0.08, ambGain, 900); },
+  rangido: (t) => { tone(120 + Math.random() * 60, t, 1.2, 'sawtooth', 0.04, ambGain, 90); },
+  sussurro: (t) => { noise(t, 1.5, 0.08, ambGain, 1500, 'bandpass', 2600, 6); },
+  grilo: (t) => { for (let i = 0; i < 6; i++) tone(4200, t + i * 0.06, 0.03, 'square', 0.025, ambGain); },
+  coruja: (t) => { tone(420, t, 0.35, 'sine', 0.07, ambGain, 380); tone(400, t + 0.45, 0.5, 'sine', 0.07, ambGain, 350); },
+  galho: (t) => { noise(t, 0.1, 0.12, ambGain, 1800, 'bandpass', 900, 3); },
+};
+
+export function playAmbience(name) {
+  wantedAmb = name;
+  if (!ctx || ctx.state !== 'running') return;
+  if (ambName === name) return;
+  stopAmbience(true);
+  const a = AMBIENCE[name];
+  if (!a) return;
+  ambName = name;
+  const t = ctx.currentTime;
+  for (const f of a.drone) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05, t + 2);
+    o.connect(g); g.connect(ambGain); o.start();
+    ambNodes.push(o, g);
+  }
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = a.wind;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 2);
+  s.connect(f); f.connect(g); g.connect(ambGain); s.start();
+  ambNodes.push(s, f, g);
+  ambTimer = setInterval(() => {
+    if (!ready()) return;
+    if (Math.random() < 0.35) AMB_EVENTS[a.events[Math.floor(Math.random() * a.events.length)]](ctx.currentTime + 0.05);
+  }, 1500);
+}
+
+export function stopAmbience(keepWanted = false) {
+  if (!keepWanted) wantedAmb = null;
+  if (ambTimer) clearInterval(ambTimer);
+  ambTimer = null;
+  for (const n of ambNodes) { try { if (n.stop) n.stop(); n.disconnect(); } catch { /* ok */ } }
+  ambNodes = [];
+  ambName = null;
+}
+
 // ---------- música ----------
-// Cada tema: bpm, passos de 1/16. lead/bass: número MIDI ou 0 (pausa). drums: k=bumbo s=caixa h=chimbal
 const R = 0;
 const THEMES = {
   title: {
@@ -111,6 +240,21 @@ const THEMES = {
     bass: [38, R, 50, R, 38, R, 50, R, 38, R, 50, R, 38, R, 50, R, 36, R, 48, R, 36, R, 48, R, 33, R, 45, R, 33, R, 45, R,
       34, R, 46, R, 34, R, 46, R, 31, R, 43, R, 31, R, 43, R, 33, R, 45, R, 33, R, 45, R, 33, R, 45, R, 33, R, 45, R],
     drums: 'k.h.s.h.k.h.s.hh',
+    leadType: 'square',
+  },
+  forest: {
+    bpm: 100,
+    lead: [64, R, R, 67, R, 69, R, R, 71, R, 69, R, 67, R, 64, R, 62, R, R, 64, R, 67, R, R, 66, R, 64, R, 62, R, R, R,
+      64, R, R, 67, R, 72, R, R, 71, R, 69, R, 71, R, 67, R, 66, R, 64, R, 62, R, 59, R, 64, R, R, R, R, R, R, R],
+    bass: [40, R, R, R, 47, R, R, R, 36, R, R, R, 43, R, R, R, 38, R, R, R, 45, R, R, R, 35, R, R, R, 42, R, R, R],
+    drums: 'k...h.h.s...h...',
+    leadType: 'triangle',
+  },
+  chase: {
+    bpm: 160,
+    lead: [69, 72, 69, R, 76, R, 74, 72, 71, 72, 71, R, 67, R, 69, R, 69, 72, 69, R, 77, R, 76, 74, 72, 74, 72, R, 71, R, 68, R],
+    bass: [45, R, 45, R, 45, R, 45, R, 43, R, 43, R, 43, R, 43, R, 41, R, 41, R, 41, R, 41, R, 40, R, 40, R, 40, R, 44, R],
+    drums: 'k.hsk.hskkhsk.ss',
     leadType: 'square',
   },
   boss: {
@@ -142,9 +286,10 @@ let nextTime = 0;
 let timer = null;
 
 export function playMusic(name) {
-  if (!ctx) return;
+  wantedMusic = name;
+  if (!ctx || ctx.state !== 'running') return; // toca assim que o som destravar
   if (current === name) return;
-  stopMusic();
+  stopMusic(true);
   const th = THEMES[name];
   if (!th) return;
   current = name;
@@ -153,14 +298,17 @@ export function playMusic(name) {
   timer = setInterval(() => schedule(th), 25);
 }
 
-export function stopMusic() {
+export function stopMusic(keepWanted = false) {
+  if (!keepWanted) wantedMusic = null;
   if (timer) clearInterval(timer);
   timer = null;
   current = null;
 }
 
 function schedule(th) {
+  if (!ctx || ctx.state !== 'running') return;
   const stepDur = 60 / th.bpm / 4;
+  if (nextTime < ctx.currentTime - 0.5) nextTime = ctx.currentTime + 0.02; // voltou da pausa
   while (nextTime < ctx.currentTime + 0.15) {
     const len = th.lead.length;
     if (th.once && step >= len) { stopMusic(); return; }
@@ -181,11 +329,11 @@ function schedule(th) {
 // zumbido contínuo da Turbina de Laser
 let hum = null;
 export function humStart() {
-  if (!ctx || !enabled || hum) return;
+  if (!ready() || hum) return;
   const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain();
   o1.type = 'sawtooth'; o1.frequency.value = 110;
   o2.type = 'square'; o2.frequency.value = 113;
-  g.gain.value = 0.07;
+  g.gain.value = 0.08;
   o1.connect(g); o2.connect(g); g.connect(sfxGain);
   o1.start(); o2.start();
   hum = { o1, o2, g };

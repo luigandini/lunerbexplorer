@@ -6,9 +6,9 @@ Jogo de aventura sombria em 3D (vista axonométrica, blocos), feito para o naveg
 Pode ser instalado na tela inicial ("Adicionar à tela inicial") e funciona sem internet depois da primeira vez.
 
 - Link para jogar: https://luigandini.github.io/lunerbexplorer/
-- História completa: prólogo + 8 fases em 4 mundos. Esta versão (v2) tem o **Prólogo: A Floresta** e o **Mundo 1: Fortaleza de Cinzarocha** (fases 1 e 2).
+- História completa: prólogo + 8 fases em 4 mundos. Esta versão (v4) tem o **Prólogo**, o **Mundo 1: Fortaleza de Cinzarocha** (fases 1–2) e o **Mundo 2: Bosque dos Sussurros** (fases 3–4, com o Feligon).
 - Estilo: 3D estilizado em salas-maquete flutuantes (cada sala aparece inteira na tela).
-- Versões anteriores guardadas: …/versao-01/ (blocos) e …/versao-02/ (maquete, antes das armas novas)
+- Versões anteriores guardadas: …/versao-01/ (blocos), …/versao-02/ (maquete), …/versao-03/ (armas novas, antes do Mundo 2)
 - Celular muito simples travando? Abra com `?baixa` no fim do link (modo leve, sem sombras). O jogo também liga esse modo sozinho se perceber que está lento.
 
 ## Controles
@@ -23,6 +23,10 @@ Pode ser instalado na tela inicial ("Adicionar à tela inicial") e funciona sem 
 - **Arma de Choque**: raio que persegue o monstro (alcance curto). **Turbina de Laser**: toque liga, toque desliga; trava o Lunerb e atira reto.
 - Diamantes compram armas com o **Mercador Misterioso**, que aparece de surpresa em algumas salas.
 - Desmaiou? A fase recomeça da primeira sala (diamantes e armas ficam). Fogueira azul recupera a vida. Dá para voltar para a sala anterior pelo portal laranja.
+
+## Amigo (Mundo 2)
+- O **Feligon** (personagem do Felipe) é resgatado do casulo da Mãe-Teia e luta junto.
+- Botão verde **AMIGO**: segure, mire com o direcional e solte → ele lança **Raízes** (prende os monstros e dá 1 coração). Recarrega em 9 s.
 
 ## Modo teste (para o Luis)
 Toque **7 vezes seguidas no título LUNERB** na tela inicial. Aparece "MODO TESTE":
@@ -45,4 +49,5 @@ Toque 7 vezes de novo para desligar.
 npm test          # testes automáticos das fases, save, Forja e arquivos
 npm run smoke     # abre o jogo num Chrome de verdade, joga um pouco e tira fotos (precisa de npm i)
 node tools/smoke-armas.mjs   # testa bombas, choque, turbina, loja, voltar de sala e morte
+node tools/smoke-mundo2.mjs  # testa o Mundo 2, a Mãe-Teia, o Feligon e o Ancião Oco
 ```

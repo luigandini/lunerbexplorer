@@ -27,9 +27,15 @@ export class UI {
     $('vignette').classList.toggle('hidden', !on);
   }
 
-  setControls({ attack = true, turbo = true } = {}) {
+  setControls({ attack = true, turbo = true, friend = false } = {}) {
     $('btn-attack').classList.toggle('hidden', !attack);
     $('btn-turbo').classList.toggle('hidden', !turbo);
+    $('btn-special').classList.toggle('hidden', !friend);
+  }
+
+  friendCooldown(sec) {
+    $('btn-special').classList.toggle('cooling', sec > 0);
+    $('special-cd').textContent = sec > 0 ? Math.ceil(sec) : '';
   }
 
   hud({ hp, maxHp, crystals, turbo, showCrystals = true }) {
@@ -44,8 +50,14 @@ export class UI {
     $('btn-turbo').classList.toggle('empty', turbo < 1);
   }
 
+  roomCounter(n, total, name) {
+    $('roomcount').innerHTML = n ? `Sala ${n}/${total}<small>${name}</small>` : '';
+    $('roomcount').classList.toggle('hidden', !n);
+  }
+
   bossBar(name, armor = 0, hp = 0) {
     const bar = $('bossbar');
+    $('roomcount').style.visibility = name ? 'hidden' : '';
     if (!name) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
     $('boss-name').textContent = name;

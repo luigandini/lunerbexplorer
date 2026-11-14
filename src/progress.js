@@ -18,6 +18,8 @@ export function newSave() {
     upgrades: { fogo: 0, rapidez: 0, laser: 0 },
     weapons: 0,           // quantas Booteshiscore o Lunerb já tem (0, 1 ou 2)
     inventory: newInventory(), // armas extras (bombas, choque, turbina...)
+    friends: [],          // amigos resgatados (ex.: 'feligon')
+    endings: {},          // finais de mundo já vistos
     storySeen: false,
     endingSeen: false,
     sound: true,
@@ -44,6 +46,9 @@ export function normalizeSave(raw) {
   }
   s.stars = stars;
   s.inventory = normalizeInventory(raw.inventory);
+  s.friends = Array.isArray(raw.friends) ? raw.friends.filter((f) => f === 'feligon' || f === 'dait') : [];
+  s.endings = raw.endings && typeof raw.endings === 'object' ? { ...raw.endings } : {};
+  if (raw.endingSeen) s.endings[1] = true;
   s.storySeen = !!s.storySeen;
   s.endingSeen = !!s.endingSeen;
   s.sound = s.sound !== false;

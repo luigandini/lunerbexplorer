@@ -42,7 +42,7 @@ function rr(ctx, x, y, w, h, rad) {
 }
 
 // Chão de pedras arredondadas (calçamento do castelo)
-function cobble(base = [92, 88, 92], gap = '#26222a', seed = 3) {
+function cobble(base = [118, 112, 118], gap = '#16131a', seed = 3) {
   const S = 256, [c, ctx] = canvas(S), r = rng(seed);
   ctx.fillStyle = gap; ctx.fillRect(0, 0, S, S);
   const cell = 32;
@@ -102,9 +102,9 @@ function dirt(seed = 9) {
 }
 
 // Blocos de pedra das paredes e das bordas da ilha
-function stoneBlocks(seed = 11, base = [104, 100, 104]) {
+function stoneBlocks(seed = 11, base = [128, 122, 128]) {
   const S = 256, [c, ctx] = canvas(S), r = rng(seed);
-  ctx.fillStyle = '#2a262c'; ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = '#1a171c'; ctx.fillRect(0, 0, S, S);
   const rows = 4;
   const rh = S / rows;
   for (let y = 0; y < rows; y++) {
@@ -161,7 +161,7 @@ function background(top = '#1d2a36', bottom = '#06080d') {
 
 const MAKERS = {
   cobble: () => cobble(),
-  cobbleMoss: () => cobble([78, 92, 70], '#1f2a1a', 4),
+  cobbleMoss: () => cobble([92, 116, 80], '#141c10', 4),
   grass: () => grass(),
   grassDark: () => grass(7, '#3d6428'),
   dirt: () => dirt(),

@@ -133,3 +133,53 @@ export function bake(root, { shadows = true } = {}) {
   }
   return root;
 }
+
+// ---------- luz de contorno: brilho colorido só na borda do personagem ----------
+const rimCache = new Map();
+function rimVersion(base, color, strength) {
+  const key = `${base.uuid}|${color}|${strength}`;
+  if (rimCache.has(key)) return rimCache.get(key);
+  const m = base.clone();
+  const c = new THREE.Color(color);
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.rimColor = { value: c };
+    shader.uniforms.rimStrength = { value: strength };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform vec3 rimColor;\nuniform float rimStrength;\nvoid main() {')
+      .replace('#include <opaque_fragment>', `
+        float rimF = 1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0);
+        outgoingLight += rimColor * pow(rimF, 2.8) * rimStrength;
+        #include <opaque_fragment>`);
+  };
+  m.customProgramCacheKey = () => `rim|${color}|${strength}|${base.type}`;
+  rimCache.set(key, m);
+  return m;
+}
+
+export function applyRim(root, color, strength = 1.2) {
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material || o.material.isMeshBasicMaterial || o.material.transparent) return;
+    if (!o.material.isMeshLambertMaterial && !o.material.isMeshStandardMaterial) return;
+    o.material = rimVersion(o.material, color, strength);
+  });
+  return root;
+}
+
+// círculo de luz suave no chão, embaixo do personagem
+let glowTex = null;
+export function groundGlow(color, radius = 0.6, opacity = 0.55) {
+  if (!glowTex) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    glowTex = new THREE.CanvasTexture(c);
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2), new THREE.MeshBasicMaterial({ map: glowTex, color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.03;
+  m.renderOrder = 1;
+  return m;
+}

@@ -3,7 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
-import { initAudio, playMusic, setSound, sfx } from './audio.js';
+import { initAudio, playMusic, setSound, sfx, bindUnlock, stopAmbience, audioState } from './audio.js';
 import { loadSave, writeSave, getTestMode, setTestMode } from './save.js';
 import { WORLDS, LEVELS, getLevel, TOTAL_PHASES } from './levels.js';
 import { applyLevelResult, buyUpgrade, upgradeCost, UPGRADES, isUnlocked } from './progress.js';
@@ -129,6 +129,7 @@ function updateMenu(dt) {
 // ---------------- telas ----------------
 function showTitle() {
   mode = 'menu';
+  stopAmbience();
   ui.gameMode(false);
   ui.show('scr-title');
   setPose('title');
@@ -139,6 +140,7 @@ function showTitle() {
 
 function showMap() {
   mode = 'menu';
+  stopAmbience();
   ui.gameMode(false);
   ui.fade(false);
   ui.show('scr-map');
@@ -211,6 +213,15 @@ const ENDING_W1 = [
   { text: 'Pela primeira vez, o Lunerb viu o céu da noite lá fora.' },
   { text: 'Mas a casa dele ainda está longe... e a floresta à frente sussurra coisas estranhas.' },
 ];
+const ENDING_W2 = [
+  { text: 'O Ancião Oco voltou a ser a árvore mais sábia do bosque.' },
+  { text: 'Agora o Lunerb tem um amigo de verdade: o Feligon!' },
+  { text: 'O lodo vem do pântano... alguém está despejando lodo nos rios. O caminho de casa passa por lá.' },
+];
+const ENDINGS = {
+  2: { world: 1, slides: ENDING_W1, next: 'Continua no Mundo 2: Bosque dos Sussurros...' },
+  4: { world: 2, slides: ENDING_W2, next: 'Continua no Mundo 3: Pântano do Lodo Negro...' },
+};
 let story = null;
 function playStory(slides, done) {
   mode = 'menu';
@@ -249,7 +260,7 @@ function startLevel(id) {
 
 function levelDone(id, res) {
   const def = getLevel(id);
-  const firstClearW1 = id === 2 && !save.endingSeen;
+  const endInfo = ENDINGS[id] && !(game.save.endings || {})[ENDINGS[id].world] ? ENDINGS[id] : null;
   // os diamantes já foram guardados um a um durante a fase
   save = applyLevelResult(game.save, id, { ...res, crystals: 0 }, { weaponReward: def.weaponReward, totalLevels: TOTAL_PHASES });
   save.unlocked = Math.min(save.unlocked, Math.max(...LEVELS.map((l) => l.id)));
@@ -274,14 +285,15 @@ function levelDone(id, res) {
   setPose('hero');
   $('btn-res-ok').onclick = () => {
     sfx('clique');
-    if (firstClearW1) {
+    if (endInfo) {
       playMusic('ending');
-      playStory(ENDING_W1, () => { save.endingSeen = true; writeSave(save); showCredits(); });
+      playStory(endInfo.slides, () => { save.endings = { ...save.endings, [endInfo.world]: true }; save.endingSeen = true; writeSave(save); showCredits(endInfo.next); });
     } else showMap();
   };
 }
 
-function showCredits() {
+function showCredits(next) {
+  if (next) document.querySelector('#scr-credits .soon').textContent = next;
   ui.show('scr-credits');
   setPose('hero');
   playMusic('ending');
@@ -342,7 +354,7 @@ function pause(on) {
   $('scr-pause').classList.toggle('hidden', !on);
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(true); });
-addEventListener('pointerdown', () => initAudio(), { once: true });
+bindUnlock(); // destrava o som no primeiro toque (celular) e tenta de novo se precisar
 
 // ---------------- laço ----------------
 addEventListener('resize', () => {
@@ -373,4 +385,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // usado pelo teste automático no navegador
-window.__lunerb = { game, ui, renderer, menu, get save() { return save; }, startLevel, showMap };
+window.__lunerb = { audioState, game, ui, renderer, menu, get save() { return save; }, startLevel, showMap };

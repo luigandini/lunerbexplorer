@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS, SOLID } from '../src/levels.js';
 
-const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJV'.split(''));
+const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceF'.split(''));
 
 test('o jogo tem 8 fases planejadas em 4 mundos, mais o prólogo', () => {
   assert.equal(TOTAL_PHASES, 8);
@@ -70,13 +70,13 @@ for (const L of LEVELS) {
   if (L.kind === 'fase') {
     test(`${L.title}: 1 Booteshiscore, fogueira e 1 baú secreto escondido`, () => {
       const chests = P.rooms.flatMap((r) => r.chests.map((c) => ({ ...c, r })));
-      assert.equal(chests.filter((c) => c.kind === 'arma').length, 1);
+      assert.equal(chests.filter((c) => c.kind === 'arma').length, L.id <= 2 ? 1 : 0, 'Booteshiscore só nas fases 1 e 2');
       assert.ok(P.rooms.some((r) => r.checkpoints.length), 'precisa de fogueira azul');
       const sec = chests.filter((c) => c.kind === 'secreto');
       assert.equal(sec.length, 1);
       assert.ok(!reachable(sec[0].r).has(sec[0].x, sec[0].y), 'o secreto não pode ser fácil');
       assert.ok(reachable(sec[0].r, { openCracks: true }).has(sec[0].x, sec[0].y), 'o secreto abre quebrando a parede');
-      assert.equal(L.weaponReward, L.id);
+      assert.equal(L.weaponReward, Math.min(L.id, 2));
       assert.ok(L.intro.length);
       const loot = chests.filter((c) => c.kind === 'arma-nova');
       assert.ok(loot.length >= 1, 'cada fase tem pelo menos 1 arma nova para achar');
@@ -106,6 +106,24 @@ test('nenhuma tocha ou obstáculo tapando passagem, porta ou portal', () => {
       }
     });
   }
+});
+
+test('toda sala de fase tem alguma recompensa', () => {
+  for (const L of LEVELS.filter((l) => l.kind === 'fase')) {
+    parseLevel(L).rooms.forEach((r, i) => {
+      const ok = r.chests.length || r.hearts.length || r.cracks.length || r.merchant || r.torches.length >= 2 || r.boss || r.checkpoints.length;
+      assert.ok(ok, `${L.title}, sala ${i + 1} não tem recompensa`);
+    });
+  }
+});
+
+test('Mundo 2: Mãe-Teia guarda o casulo do Feligon e o Ancião Oco fecha o mundo', () => {
+  const f3 = parseLevel(LEVELS.find((l) => l.id === 3));
+  const a3 = f3.rooms[f3.rooms.length - 1];
+  assert.equal(a3.boss.type, 'maeteia');
+  assert.ok(a3.cocoon, 'falta o casulo do Feligon');
+  const f4 = parseLevel(LEVELS.find((l) => l.id === 4));
+  assert.equal(f4.rooms[f4.rooms.length - 1].boss.type, 'anciao');
 });
 
 test('a Fase 2 termina na arena do Capitão de Ferro', () => {

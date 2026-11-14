@@ -2,11 +2,11 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { parseLevel, getLevel, SOLID, ROOM_SPACING } from './levels.js';
 import { buildRoom, sharedMaterials } from './world.js';
-import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCoracao } from './models.js';
-import { material } from './geo.js';
+import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCoracao, buildCogumelo, buildEspinho, buildMaeTeia, buildAnciao } from './models.js';
+import { material, applyRim, groundGlow } from './geo.js';
 import { tex } from './textures.js';
 import { FX } from './fx.js';
-import { sfx, playMusic, humStart, humStop } from './audio.js';
+import { sfx, playMusic, humStart, humStop, playAmbience, stopAmbience } from './audio.js';
 import { ITEMS, normalizeInventory, addItem, useAmmo, select, shopPrice, findSlot } from './inventory.js';
 import * as Props from './props.js';
 import { weaponStats, UPGRADES, upgradeCost, buyUpgrade } from './progress.js';
@@ -28,11 +28,23 @@ const EDEF = {
   armadura: { hp: 3, armor: 3, speed: 1.15, r: 0.36, aggro: 6.5, drop: 3, build: () => buildZumbi({ armor: true }) },
   aranha: { hp: 2, armor: 0, speed: 3.0, r: 0.32, aggro: 6, drop: 1, hop: true, build: buildAranha },
   morcego: { hp: 2, armor: 0, speed: 2.4, r: 0.3, aggro: 6.5, drop: 1, fly: true, build: buildMorcego },
+  cogumelo: { hp: 3, armor: 0, speed: 1.05, r: 0.32, aggro: 6, drop: 2, build: buildCogumelo },
+  espinho: { hp: 4, armor: 0, speed: 0, r: 0.36, aggro: 7.5, drop: 2, still: true, build: buildEspinho },
+};
+
+// cores do contorno de cada personagem (decididas com o Luis)
+const RIM = { hero: 0xffd8b0, inimigo: 0x6dff3a, chefe: 0x7dff4a, mercador: 0xc58cff, feligon: 0x7dff6a, dait: 0x2ee6ff };
+
+const BOSS = {
+  capitao: { name: 'CAPITÃO DE FERRO', scale: 2.8, hp: 32, armor: 26, r: 0.8 },
+  maeteia: { name: 'MÃE-TEIA', scale: 2.7, hp: 42, armor: 0, r: 0.85 },
+  anciao: { name: 'ANCIÃO OCO', scale: 2.1, hp: 30, armor: 30, r: 1.0 },
 };
 
 const THEMES = {
-  forest: { bg: 'bgForest', hemi: [0xbfe3ff, 0x3a4a2a, 1.25], sun: [0xfff0d0, 2.4], player: 0, torch: 0, exposure: 1.1 },
-  castle: { bg: 'bgCastle', hemi: [0xa8b4e8, 0x3a3034, 1.25], sun: [0xd0d8ff, 2.1], player: 4, torch: 7, exposure: 1.3 },
+  forest: { bg: 'bgForest', hemi: [0xbfe3ff, 0x3a4a2a, 1.45], sun: [0xfff0d0, 2.6], player: 0, torch: 0, exposure: 1.2 },
+  forestNight: { bg: 'bgForest', hemi: [0x9ab8e8, 0x2a3a24, 1.35], sun: [0xbcd0ff, 2.0], player: 4, torch: 7, exposure: 1.35 },
+  castle: { bg: 'bgCastle', hemi: [0xb4c0f0, 0x40363a, 1.6], sun: [0xdde4ff, 2.4], player: 4, torch: 7, exposure: 1.45 },
 };
 
 export class Game {
@@ -68,7 +80,7 @@ export class Game {
     this.stats = weaponStats(save);
     this.inv = normalizeInventory(save.inventory);
     this.difficulty = def.difficulty || 1;
-    const theme = THEMES[def.theme];
+    const theme = THEMES[def.light || def.theme];
     this.themeCfg = theme;
     this.chaseStarted = false;
 
@@ -116,7 +128,7 @@ export class Game {
         entry: this.entryPos(pr, off),
       };
       for (const e of pr.enemies) room.enemies.push(this.makeEnemy(e.type, off.x + e.x + 0.5, off.z + e.y + 0.5, false));
-      if (pr.boss) room.boss = this.makeBoss(off.x + pr.boss.x + 0.5, off.z + pr.boss.y + 0.5);
+      if (pr.boss) room.boss = this.makeBoss(off.x + pr.boss.x + 0.5, off.z + pr.boss.y + 0.5, pr.boss.type);
       if (vis.exit) this.setGateLocked(vis.exit, !!room.boss);
       if (vis.merchant) { vis.merchant.here = testMode || Math.random() < 0.55; vis.merchant.group.visible = vis.merchant.here; }
       return room;
@@ -125,7 +137,10 @@ export class Game {
     // herói
     const model = buildHero(def.hero);
     model.root.scale.setScalar(HERO_SCALE);
+    applyRim(model.root, RIM.hero, 0.55);
     scene.add(model.root);
+    this.heroGlow = groundGlow(0xffc890, 0.55, 0.35);
+    scene.add(this.heroGlow);
     const blob = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
     blob.rotation.x = -Math.PI / 2;
     blob.visible = this.lowQuality;
@@ -137,9 +152,11 @@ export class Game {
       safeX: 0, safeZ: 0, dead: false, sink: 0,
     };
     this.updateGuns();
+    this.pendingFriend = !this.isPrologue && def.world >= 2 && save.friends.includes('feligon');
 
     this.shots = []; this.pickups = []; this.lasers = []; this.bombs = []; this.bolts = []; this.scorches = [];
-    this.aim = null; this.beam = null; this.weaponCd = 0; this.arenaItem = null;
+    this.aim = null; this.beam = null; this.weaponCd = 0; this.arenaItem = null; this.eshots = []; this.friend = null; this.friendAim = null;
+    const fret = Props.reticle(0x7dff6a); fret.group.visible = false; scene.add(fret.group); this.friendReticle = fret;
     const ret = Props.reticle(); ret.group.visible = false; scene.add(ret.group); this.reticle = ret;
     this.boomLight = new THREE.PointLight(0xffa040, 0, 14, 1.2); scene.add(this.boomLight);
     this.result = { finished: false, damageTaken: 0, secretFound: false, crystals: 0 };
@@ -147,14 +164,16 @@ export class Game {
     this.frozen = true; this.cine = null; this.trans = null; this.ended = false;
     this.tips = { turbo: false };
     this.lightTimer = 0;
+    if (this.pendingFriend) this.spawnFriend(this.player.x - 0.8, this.player.z);
     this.enterRoom(0, true);
     this.view = { ...this.viewTarget };
     this.running = true;
     this.paused = false;
 
-    this.ui.setControls({ attack: !this.isPrologue, turbo: !this.isPrologue });
+    this.ui.setControls({ attack: !this.isPrologue, turbo: !this.isPrologue, friend: !!this.friend });
     this.refreshSlots();
     playMusic(def.music);
+    playAmbience(def.ambience || def.theme);
     this.ui.titleCard(this.isPrologue ? 'PRÓLOGO' : `MUNDO ${def.world} · FASE ${def.id}`, def.title);
     const token = this.startToken = (this.startToken || 0) + 1;
     setTimeout(() => {
@@ -171,6 +190,7 @@ export class Game {
   dispose() {
     this.running = false;
     humStop();
+    stopAmbience();
     if (this.scene) {
       this.scene.traverse((o) => {
         if (o.isMesh && Array.isArray(o.material)) o.material.forEach((m) => { if (m.map && m.map.isCanvasTexture && m.map.image.width > 256) m.map.dispose(); });
@@ -196,8 +216,8 @@ export class Game {
     room.vis.group.visible = true;
     if (prev && prev !== room) {
       prev.vis.group.visible = false;
-      for (const e of prev.enemies) e.m.root.visible = false;
-      if (prev.boss) prev.boss.m.root.visible = false;
+      for (const e of prev.enemies) { e.m.root.visible = false; if (e.m.glow) e.m.glow.visible = false; }
+      if (prev.boss) { prev.boss.m.root.visible = false; if (prev.boss.m.glow) prev.boss.m.glow.visible = false; }
     }
     for (const e of room.enemies) e.m.root.visible = e.alive;
     if (room.boss) room.boss.m.root.visible = room.boss.alive;
@@ -215,6 +235,7 @@ export class Game {
     }
     this.gateArmed = false;
     this.respawn = { x: p.x, z: p.z };
+    if (this.friend) { this.friend.x = p.x - Math.sin(p.face) * 0.8; this.friend.z = p.z - Math.cos(p.face) * 0.8; this.friend.cmd = null; this.friend.restT = 0; }
     room.enterT = 0; room.spawnT = 0;
     if (room.boss && room.boss.alive && !first) { p.turbo = 3; p.hp = Math.max(p.hp, 3); this.ui.toast('⚡ Turbo Negro carregado! Corra!', 1800); }
     this.viewTarget = this.fitRoom(room);
@@ -229,7 +250,8 @@ export class Game {
     if (gate) this.gateLight.position.set(room.off.x + gate.lx, 1.2, room.off.z + gate.lz);
     this.gateLight.intensity = gate && !gate.locked ? 4 : 0;
     this.lightTimer = 0;
-    if (!first) this.ui.toast(room.name, 1600);
+    if (!first && Math.random() < 0.4) setTimeout(() => this.running && sfx('susto'), 600);
+    this.ui.roomCounter(i + 1, this.rooms.length, room.name);
   }
 
   // Enquadra a sala inteira na tela (câmera fixa e distante)
@@ -256,9 +278,13 @@ export class Game {
     const d = EDEF[type];
     const m = d.build();
     m.root.scale.setScalar(HERO_SCALE);
+    applyRim(m.root, RIM.inimigo, 0.65);
     m.root.position.set(x, 0, z);
     m.root.visible = false;
     this.scene.add(m.root);
+    m.glow = groundGlow(0x5cff3a, 0.5, 0.3);
+    m.glow.visible = false;
+    this.scene.add(m.glow);
     return {
       type, x, z, hp: d.hp, armor: d.armor, def: d, m, alive: true, awake: chase, chase,
       t: Math.random() * 3, wx: 0, wz: 0, kvx: 0, kvz: 0, face: Math.random() * 6, hit: 0, r: d.r,
@@ -266,15 +292,19 @@ export class Game {
     };
   }
 
-  makeBoss(x, z) {
-    const m = buildZumbi({ armor: true, boss: true });
-    m.root.scale.setScalar(2.8);
+  makeBoss(x, z, type = 'capitao') {
+    const B = BOSS[type];
+    const m = type === 'maeteia' ? buildMaeTeia() : type === 'anciao' ? buildAnciao() : buildZumbi({ armor: true, boss: true });
+    m.root.scale.setScalar(B.scale);
+    applyRim(m.root, RIM.chefe, 0.95);
+    m.glow = groundGlow(0x5cff3a, 1.3, 0.45);
+    this.scene.add(m.glow);
     m.root.visible = false;
     this.scene.add(m.root);
     m.root.position.set(x, 0, z);
     return {
-      type: 'capitao', x, z, hx: x, hz: z, hp: 32, maxHp: 32, armor: 26, maxArmor: 26, m, alive: true,
-      state: 'dormindo', t: 0, cycle: 0, r: 0.8, kvx: 0, kvz: 0, face: -Math.PI / 2, hit: 0, chargeDx: 0, chargeDz: 0,
+      type, name: B.name, scale: B.scale, x, z, hx: x, hz: z, hp: B.hp, maxHp: B.hp, armor: B.armor, maxArmor: Math.max(1, B.armor), m, alive: true,
+      state: 'dormindo', t: 0, cycle: 0, r: B.r, kvx: 0, kvz: 0, face: -Math.PI / 2, hit: 0, chargeDx: 0, chargeDz: 0,
       spawnT: 0, hordeDone: false, ring: null,
     };
   }
@@ -355,6 +385,8 @@ export class Game {
       if (this.isPrologue) this.updateSpawners(dt);
       this.updateShots(dt);
       this.updateBombs(dt);
+      this.updateEShots(dt);
+      if (this.friend) this.updateFriend(dt);
       this.updateBolts(dt);
       this.updateBeam(dt);
       this.updatePickups(dt);
@@ -362,6 +394,7 @@ export class Game {
     }
     this.updateScorches(dt);
     this.animate(dt);
+    this.animateFriend(dt);
     this.fx.update(dt);
     this.updateLights(dt);
     this.updateCamera(dt);
@@ -421,9 +454,11 @@ export class Game {
     }
 
     this.weaponCd = Math.max(0, this.weaponCd - dt);
-    const locked = !!this.beam || !!this.aim;
+    const locked = !!this.beam || !!this.aim || !!this.friendAim;
+    p.slowT = Math.max(0, (p.slowT || 0) - dt);
     let speed = this.isPrologue ? 4.5 : P_SPEED;
     if (this.room.boss && this.room.boss.alive) speed *= 1.2; // na arena o Lunerb corre mais para fugir
+    if (p.slowT > 0) speed *= 0.5; // preso na teia
     if (this.tileAt(p.x, p.z) === 'W' && p.dash <= 0) speed *= 0.45;
 
     if (p.dash > 0) {
@@ -455,6 +490,8 @@ export class Game {
     }
 
     if (this.isPrologue) return; // no prólogo o Lucas só pode fugir
+    if (this.friend) this.handleFriendInput(dt);
+    if (this.friendAim) return;
     const slot = this.inv.slots[this.inv.sel];
     const item = slot ? slot.id : 'boot';
     if (item === 'bombas' || item === 'superbomba') { this.handleBombInput(dt, item); return; }
@@ -644,11 +681,21 @@ export class Game {
     e.t += dt;
     e.hit = Math.max(0, e.hit - dt);
     const dx = p.x - e.x, dz = p.z - e.z, dist = Math.hypot(dx, dz);
+    // vozes: rosnados, chiados e guinchos de vez em quando
+    e.voice = (e.voice ?? 1 + Math.random() * 4) - dt;
+    if (e.voice <= 0) {
+      e.voice = (e.awake ? 2.5 : 5) + Math.random() * 4;
+      if (e.awake || dist < 7) sfx({ zumbi: 'zumbi', armadura: 'zumbi', aranha: 'aranha', morcego: 'morcego', cogumelo: 'cogumelo', espinho: 'espinho' }[e.type] || 'zumbi');
+    }
     if (!e.chase) {
       if (!e.awake && dist < d.aggro && !p.dead) e.awake = true;
       if (e.awake && (dist > d.aggro * 2.2 || p.dead)) e.awake = false;
     }
     let vx = 0, vz = 0;
+    e.rootT = Math.max(0, (e.rootT || 0) - dt);
+    if (e.rootT > 0) { e.moving = false; return; } // preso pelas raízes do Feligon
+    if (e.type === 'espinho') return this.updateEspinho(e, dt, dx, dz, dist);
+    if (e.type === 'cogumelo' && this.updateCogumelo(e, dt, dx, dz, dist)) return;
     // bote: o zumbi para, levanta os braços e pula em cima do Lunerb
     if ((e.type === 'zumbi' || e.type === 'armadura') && !e.chase) {
       e.lungeCd = Math.max(0, (e.lungeCd || 0) - dt);
@@ -665,6 +712,7 @@ export class Game {
         e.lungeCd = 1.8 / this.difficulty;
       } else if (e.awake && !p.dead && dist < 2.2 && e.lungeCd <= 0) {
         e.lunge = { t: 0, dx: dx / (dist || 1), dz: dz / (dist || 1) };
+        sfx('zumbiBote');
         e.face = Math.atan2(dx, dz);
         return;
       }
@@ -708,7 +756,7 @@ export class Game {
       if (!room.warned) { room.warned = true; sfx('rugido'); }
       if (!this.chaseStarted) {
         this.chaseStarted = true;
-        playMusic('boss');
+        playMusic('chase');
         this.frozen = true;
         this.input.reset();
         this.ui.dialog([{ who: 'Lucas', text: 'O que é isso?! MONSTROS!' }, { who: 'Lucas', text: 'Eles estão vindo atrás de mim! Preciso CORRER!' }], () => {
@@ -721,9 +769,10 @@ export class Game {
 
   damage(e, dmg, kx, kz) {
     if (!e.alive) return;
-    if (e.type === 'capitao' && (e.state === 'intro' || e.state === 'dormindo')) return;
+    const isBoss = !!e.name;
+    if (isBoss && (e.state === 'intro' || e.state === 'dormindo')) return;
     e.hit = 0.15;
-    const kb = e.type === 'capitao' ? 0.6 : 4;
+    const kb = isBoss ? (e.type === 'anciao' ? 0 : 0.6) : 4;
     e.kvx = (kx || 0) * kb; e.kvz = (kz || 0) * kb;
     if (e.armor > 0) {
       e.armor -= dmg;
@@ -732,9 +781,9 @@ export class Game {
       if (e.armor <= 0) {
         e.armor = 0;
         if (e.m.armorGroup) e.m.armorGroup.visible = false;
-        this.fx.armorPieces(e.x, e.z, e.type === 'capitao' ? 2 : 1);
-        sfx('clang');
-        if (e.type === 'capitao') this.bossArmorBroken();
+        this.fx.armorPieces(e.x, e.z, isBoss ? 2 : 1);
+        sfx(e.type === 'anciao' ? 'quebra' : 'clang');
+        if (isBoss) this.bossArmorBroken();
       }
       return;
     }
@@ -747,10 +796,12 @@ export class Game {
   kill(e) {
     e.alive = false;
     e.m.root.visible = false;
-    this.fx.smoke(e.x, e.z, e.type === 'capitao' ? 3 : 1);
+    this.fx.smoke(e.x, e.z, e.name ? 3 : 1);
     sfx('puf');
     this.player.turbo = Math.min(3, this.player.turbo + 0.45);
-    if (e.type === 'capitao') { this.bossDefeated(); return; }
+    if (e.name) { this.bossDefeated(); return; }
+    if (e.type === 'cogumelo') this.spores(e.x, e.z);
+    if (e.rootMesh) e.rootMesh.visible = false;
     const n = e.def.drop + (Math.random() < 0.5 ? 1 : 0);
     for (let i = 0; i < n; i++) this.dropCrystal(e.x, e.z);
     if (this.player.hp < MAX_HP && Math.random() < 0.15) this.dropHeart(e.x, e.z);
@@ -784,6 +835,10 @@ export class Game {
       return;
     }
     if (p.dead) return;
+    b.rootT = Math.max(0, (b.rootT || 0) - dt);
+    if (b.rootT > 0) { b.moving = false; if (Math.random() < 0.2) this.fx.sparks(b.x, 0.5, b.z, 0x7dff6a, 1); this.ui.bossBar(b.name, b.armor / b.maxArmor, b.hp / b.maxHp); return; }
+    if (b.type === 'maeteia') return this.updateMaeTeia(b, dt, dx, dz, dist);
+    if (b.type === 'anciao') return this.updateAnciao(b, dt, dx, dz, dist);
     const speed = (broken ? 2.75 : 1.9) * this.difficulty;
     switch (b.state) {
       case 'perseguir':
@@ -848,13 +903,13 @@ export class Game {
         break;
     }
     this.updateArenaItem(dt);
-    if (broken) {
+    if (broken && b.type === 'capitao') {
       b.spawnT += dt;
       const alive = this.room.enemies.filter((e) => e.alive).length;
       if (b.spawnT > 9 && alive < 4) { b.spawnT = 0; this.spawnHorde(2, false); }
     }
     if (dist < b.r + P_R && b.state !== 'tonto') this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1), false, 11);
-    this.ui.bossBar('CAPITÃO DE FERRO', b.armor / b.maxArmor, b.hp / b.maxHp);
+    this.ui.bossBar(b.name, b.armor / b.maxArmor, b.hp / b.maxHp);
   }
 
   startBossIntro() {
@@ -871,13 +926,14 @@ export class Game {
     const b = this.room.boss;
     if (c.kind === 'boss') {
       this.viewTarget = this.focusView(b.x, b.z, 3.4);
-      if (c.t > 0.6 && !c.shown) { c.shown = true; this.ui.bigText('CAPITÃO DE FERRO', 1800, 'boss'); this.shake = 0.5; }
-      b.m.arms.forEach((a) => (a.rotation.x = -2.6 + Math.sin(c.t * 10) * 0.2));
+      if (c.t > 0.6 && !c.shown) { c.shown = true; this.ui.bigText(b.name, 1800, 'boss'); this.shake = 0.5; sfx(b.type === 'anciao' ? 'arvore' : b.type === 'maeteia' ? 'aranha' : 'rugido'); }
+      if (b.type === 'capitao') b.m.arms.forEach((a) => (a.rotation.x = -2.6 + Math.sin(c.t * 10) * 0.2));
       if (c.t > 2.6) {
         this.cine = null;
         b.state = 'perseguir'; b.t = 0;
         this.viewTarget = this.fitRoom(this.room);
-        this.spawnHorde(3, true);
+        if (b.type === 'capitao') this.spawnHorde(3, true);
+        if (b.type === 'maeteia') this.spawnBabies(2);
         this.spawnArenaItem();
       }
     } else if (c.kind === 'bossDown') {
@@ -885,7 +941,9 @@ export class Game {
       if (c.t > 2.2) {
         this.cine = null;
         this.viewTarget = this.fitRoom(this.room);
-        this.ui.dialog([{ who: 'Lunerb', text: 'Consegui! O portão da saída abriu!' }], () => {});
+        if (c.type === 'maeteia') this.freeFeligon();
+        else if (c.type === 'anciao') this.ui.dialog([{ who: 'Ancião Oco', text: 'Ahh... obrigado, crianças. O lodo saiu de mim.' }, { who: 'Ancião Oco', text: 'Ele vem do pântano. Alguém está despejando lodo nos rios...' }, { who: 'Lunerb', text: 'Então o caminho de casa passa pelo pântano. Vamos!' }], () => {});
+        else this.ui.dialog([{ who: 'Lunerb', text: 'Consegui! O portão da saída abriu!' }], () => {});
       }
     } else if (c.kind === 'lago') {
       // o Lucas é encurralado e cai no lago de lodo
@@ -922,9 +980,10 @@ export class Game {
   }
 
   bossArmorBroken() {
-    this.ui.toast('A armadura caiu! Agora ele está mais rápido!');
-    this.shake = 0.5;
     const b = this.room.boss;
+    this.shake = 0.5;
+    if (b.type === 'anciao') { this.ui.toast('A casca caiu! Acerte o coração verde!'); return; }
+    this.ui.toast('A armadura caiu! Agora ele está mais rápido!');
     if (!b.hordeDone) { b.hordeDone = true; this.spawnHorde(3, true); }
   }
 
@@ -932,8 +991,8 @@ export class Game {
     const b = this.room.boss;
     this.ui.bossBar(null);
     this.fx.armorPieces(b.x, b.z, 2);
-    this.cine = { kind: 'bossDown', t: 0 };
-    this.ui.bigText('CAPITÃO DE FERRO DERROTADO!', 2000, 'boss');
+    this.cine = { kind: 'bossDown', t: 0, type: b.type };
+    this.ui.bigText(`${b.name} DERROTAD${b.type === 'maeteia' ? 'A' : 'O'}!`, 2000, 'boss');
     sfx('clang');
     for (let i = 0; i < 12; i++) this.dropCrystal(b.x, b.z);
     for (const e of this.room.enemies) if (e.alive) this.kill(e);
@@ -1050,7 +1109,7 @@ export class Game {
       else this.finish(false);
     }
     // prólogo: a beira do lago de lodo
-    if (room.pr.lake.length && !this.cine) {
+    if (this.isPrologue && room.pr.lake.length && !this.cine) {
       let best = null, bd = 1.05;
       for (const t of room.pr.lake) {
         const d = Math.hypot(ox + t.x + 0.5 - p.x, oz + t.y + 0.5 - p.z);
@@ -1117,7 +1176,390 @@ export class Game {
     const b = this.rooms[this.rooms.length - 1].boss;
     if (b && b.alive) { b.alive = false; b.m.root.visible = false; this.ui.bossBar(null); }
     if (this.def.weaponReward > this.player.weapons) this.player.weapons = this.def.weaponReward;
+    if (this.def.boss === 'maeteia' && !this.save.friends.includes('feligon')) this.save.friends.push('feligon');
     this.finish(this.isPrologue);
+  }
+
+  // ---------------- Mundo 2: inimigos novos ----------------
+  updateEspinho(e, dt, dx, dz, dist) {
+    e.face = turnTo(e.face, Math.atan2(dx, dz), dt * 5);
+    e.moving = false;
+    e.shootCd = (e.shootCd ?? 1 + Math.random() * 2) - dt;
+    e.aimT = Math.max(0, (e.aimT || 0) - dt);
+    if (dist < 7.5 && !this.player.dead) {
+      if (e.shootCd <= 0.3 && !e.aimed) { e.aimed = true; e.aimT = 0.3; }
+      if (e.shootCd <= 0) {
+        e.shootCd = 2.4 / this.difficulty;
+        e.aimed = false;
+        this.spawnEShot(e.x, e.z, dx / (dist || 1), dz / (dist || 1), 'espinho');
+        sfx('espinho');
+      }
+    }
+    this.touchCheck(e, dx, dz, dist);
+  }
+
+  updateCogumelo(e, dt, dx, dz, dist) {
+    e.puffCd = Math.max(0, (e.puffCd || 0) - dt);
+    if (e.puff) {
+      e.puff.t += dt;
+      e.moving = false;
+      if (e.puff.t > 0.6) {
+        e.puff = null;
+        e.puffCd = 3 / this.difficulty;
+        this.spores(e.x, e.z);
+        if (dist < 1.75) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1));
+      }
+      return true;
+    }
+    if (e.awake && dist < 1.5 && e.puffCd <= 0) { e.puff = { t: 0 }; sfx('cogumelo'); return true; }
+    return false;
+  }
+
+  spores(x, z) {
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 0.6 + Math.random() * 1.6;
+      this.fx.spawn(x, 0.4 + Math.random() * 0.4, z, { color: Math.random() < 0.5 ? 0xb8ff6a : 0x7adf3a, size: 0.12 + Math.random() * 0.15, vx: Math.cos(a) * sp, vy: 0.4 + Math.random() * 0.6, vz: Math.sin(a) * sp, life: 0.9 + Math.random() * 0.5, emissive: 1 });
+    }
+    this.fx.ring(x, z, 1.7, 0.4, 0x9dff5a);
+  }
+
+  spawnEShot(x, z, dx, dz, kind, speed = 6) {
+    let g;
+    if (kind === 'espinho') {
+      g = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 5).rotateX(Math.PI / 2), material(0xe8d8a0, 'glow'));
+    } else if (kind === 'teia') {
+      g = new THREE.Mesh(BALL, material(0xf2f2ff, 'glow', 0.85)); g.scale.setScalar(0.17);
+    } else {
+      g = new THREE.Mesh(BALL, material(0x7a4a22, 'lit')); g.scale.set(0.14, 0.18, 0.14);
+    }
+    g.position.set(x, 0.8, z);
+    g.rotation.y = Math.atan2(dx, dz);
+    this.scene.add(g);
+    this.eshots.push({ x, z, dx, dz, speed, life: 2.2, kind, g });
+  }
+
+  updateEShots(dt) {
+    const p = this.player;
+    for (let i = this.eshots.length - 1; i >= 0; i--) {
+      const s = this.eshots[i];
+      s.life -= dt;
+      s.x += s.dx * s.speed * dt; s.z += s.dz * s.speed * dt;
+      s.g.position.set(s.x, 0.8, s.z);
+      if (s.kind !== 'espinho') s.g.rotation.x += dt * 8;
+      let dead = s.life <= 0 || SOLID.has(this.tileAt(s.x, s.z));
+      if (!dead && !p.dead && Math.hypot(p.x - s.x, p.z - s.z) < P_R + 0.18) {
+        dead = true;
+        if (p.dash <= 0) {
+          this.hurtPlayer(1, s.dx, s.dz);
+          if (s.kind === 'teia') { p.slowT = 2; this.ui.toast('Preso na teia! Mais devagar...', 1200); }
+        }
+      }
+      if (dead) {
+        this.fx.sparks(s.x, 0.8, s.z, s.kind === 'teia' ? 0xffffff : 0xc8a060, 4);
+        this.scene.remove(s.g);
+        this.eshots.splice(i, 1);
+      }
+    }
+  }
+
+  rootVisual(e) {
+    if (!e.rootMesh) {
+      const g = new THREE.Group();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const c = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.5, 5), material(0x4a7a28, 'lit'));
+        c.position.set(Math.cos(a) * 0.32, 0.22, Math.sin(a) * 0.32);
+        c.rotation.set(Math.sin(a) * -0.4, 0, Math.cos(a) * 0.4);
+        g.add(c);
+      }
+      this.scene.add(g);
+      e.rootMesh = g;
+    }
+    e.rootMesh.visible = e.alive;
+    e.rootMesh.position.set(e.x, 0, e.z);
+  }
+
+  // ---------------- Mãe-Teia ----------------
+  spawnBabies(n) {
+    const b = this.room.boss;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      let x = b.x + Math.cos(a) * 1.6, z = b.z + Math.sin(a) * 1.6;
+      if (this.solidLocal(Math.floor(x - this.room.off.x), Math.floor(z - this.room.off.z), 'enemy')) { x = b.x; z = b.z; }
+      const e = this.makeEnemy('aranha', x, z, false);
+      e.awake = true; e.m.root.visible = true;
+      this.room.enemies.push(e);
+      this.fx.smoke(x, z, 0.7);
+    }
+  }
+
+  updateMaeTeia(b, dt, dx, dz, dist) {
+    const sp = 3.1 * this.difficulty * (b.hp < b.maxHp / 2 ? 1.2 : 1);
+    switch (b.state) {
+      case 'perseguir': {
+        b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 7);
+        const hop = (b.t % 0.8) < 0.5;
+        if (hop) this.move(b, (dx / (dist || 1)) * sp * dt, (dz / (dist || 1)) * sp * dt, b.r, 'enemy');
+        b.moving = hop;
+        if (b.t > 1.8) {
+          b.t = 0; b.cycle++;
+          const babies = this.room.enemies.filter((e) => e.alive).length;
+          b.state = b.cycle % 4 === 3 && babies < 4 ? 'filhotes' : b.cycle % 2 ? 'cuspir' : 'agachar';
+          b.moving = false;
+          sfx('aranha');
+        }
+        break;
+      }
+      case 'cuspir':
+        b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 10);
+        if (b.t > 0.4) {
+          const base = Math.atan2(dx, dz);
+          for (const off of [-0.3, 0, 0.3]) this.spawnEShot(b.x, b.z, Math.sin(base + off), Math.cos(base + off), 'teia', 6.5);
+          sfx('lancar');
+          b.state = 'perseguir'; b.t = 0;
+        }
+        break;
+      case 'filhotes':
+        if (b.t > 0.5) { this.spawnBabies(2); b.state = 'perseguir'; b.t = 0; }
+        break;
+      case 'agachar':
+        b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 10);
+        if (b.t > 0.35) { b.state = 'bote'; b.t = 0; b.chargeDx = dx / (dist || 1); b.chargeDz = dz / (dist || 1); sfx('aranha'); }
+        break;
+      case 'bote':
+        this.move(b, b.chargeDx * 10 * dt, b.chargeDz * 10 * dt, b.r, 'enemy');
+        b.moving = true;
+        if (b.t > 0.38) { b.state = 'perseguir'; b.t = 0; this.shake = Math.max(this.shake, 0.3); sfx('pancada'); }
+        break;
+      default: b.state = 'perseguir';
+    }
+    if (dist < b.r + P_R) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1), false, 11);
+    this.updateArenaItem(dt);
+    this.ui.bossBar(b.name, 0, b.hp / b.maxHp);
+  }
+
+  // ---------------- Ancião Oco ----------------
+  updateAnciao(b, dt, dx, dz, dist) {
+    const broken = b.armor <= 0;
+    switch (b.state) {
+      case 'perseguir':
+        b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 3);
+        this.move(b, (dx / (dist || 1)) * 0.6 * this.difficulty * dt, (dz / (dist || 1)) * 0.6 * this.difficulty * dt, b.r, 'enemy');
+        b.moving = true;
+        if (b.t > (broken ? 1.3 : 1.9)) {
+          b.t = 0; b.cycle++;
+          b.state = dist < 3.4 ? 'erguer' : b.cycle % 2 ? 'raizes' : 'bolotas';
+          b.moving = false;
+          sfx('arvore');
+          if (b.state === 'raizes') {
+            b.spots = [[0, 0], [1.4, 0.6], [-1.2, 1.1], ...(broken ? [[0.6, -1.4]] : [])].map(([ox, oz]) => {
+              const x = this.player.x + ox, z = this.player.z + oz;
+              const ring = this.fx.ring(x, z, 0.85, 0.9, 0x7dff6a);
+              return { x, z, ring };
+            });
+          }
+        }
+        break;
+      case 'raizes':
+        if (b.t > 0.9) {
+          for (const s of b.spots) {
+            this.rootBurst(s.x, s.z);
+            if (Math.hypot(this.player.x - s.x, this.player.z - s.z) < 0.85) this.hurtPlayer(1, 0, 1, false, 9);
+          }
+          this.shake = Math.max(this.shake, 0.35);
+          sfx('raizes');
+          b.state = 'perseguir'; b.t = 0;
+        }
+        break;
+      case 'erguer':
+        if (b.t > 0.55) { b.state = 'galhada'; b.t = 0; this.fx.ring(b.x, b.z, 3.6, 0.35, 0xb8ff6a); sfx('pancada'); this.shake = 0.45; if (dist < 3.6) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1), false, 14); }
+        break;
+      case 'galhada':
+        if (b.t > 0.6) { b.state = 'perseguir'; b.t = 0; }
+        break;
+      case 'bolotas':
+        if (b.t > 0.45) {
+          const base = Math.atan2(dx, dz);
+          for (const off of broken ? [-0.5, -0.25, 0, 0.25, 0.5] : [-0.35, 0, 0.35]) this.spawnEShot(b.x, b.z, Math.sin(base + off), Math.cos(base + off), 'bolota', 6.5);
+          sfx('lancar');
+          b.state = 'perseguir'; b.t = 0;
+        }
+        break;
+      default: b.state = 'perseguir';
+    }
+    if (dist < b.r + P_R) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1), false, 12);
+    this.updateArenaItem(dt);
+    this.ui.bossBar(b.name, b.armor / b.maxArmor, b.hp / b.maxHp);
+  }
+
+  rootBurst(x, z) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.8, 5), material(0x5a3d22, 'lit'));
+      c.position.set(Math.cos(a) * 0.35, 0.35, Math.sin(a) * 0.35);
+      c.rotation.set(Math.sin(a) * -0.5, 0, Math.cos(a) * 0.5);
+      g.add(c);
+    }
+    g.position.set(x, 0, z);
+    this.scene.add(g);
+    this.lasers.push({ g, life: 0.6 });
+    for (let i = 0; i < 6; i++) this.fx.spawn(x, 0.3, z, { color: 0x6a4a2c, size: 0.12, vx: (Math.random() - 0.5) * 3, vy: 3, vz: (Math.random() - 0.5) * 3, life: 0.8, gravity: 10, shrink: false });
+  }
+
+  // ---------------- Feligon: o amigo ----------------
+  spawnFriend(x, z) {
+    const model = buildHero('feligon');
+    model.root.scale.setScalar(HERO_SCALE * 0.95);
+    applyRim(model.root, RIM.feligon, 0.6);
+    this.scene.add(model.root);
+    const glow = groundGlow(0x6aff5a, 0.5, 0.35);
+    this.scene.add(glow);
+    this.friend = { x, z, face: 0, model, glow, cmd: null, cd: 0, atkCd: 0, restT: 0, walkT: 0, moving: false, hitCheck: 0 };
+    this.ui.setControls({ attack: true, turbo: true, friend: true });
+  }
+
+  freeFeligon() {
+    const room = this.room;
+    const co = room.vis.cocoon;
+    const already = this.save.friends.includes('feligon');
+    if (co) {
+      co.g.visible = false;
+      const x = room.off.x + co.lx, z = room.off.z + co.lz;
+      this.fx.smoke(x, z, 1.5);
+      for (let i = 0; i < 20; i++) this.fx.spawn(x, 0.8, z, { color: 0xf2f2ff, size: 0.12, vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 2, vz: (Math.random() - 0.5) * 4, life: 1, gravity: 6 });
+      if (!this.friend) this.spawnFriend(x, z + 0.6);
+    }
+    if (already) { this.ui.dialog([{ who: 'Feligon', text: 'Esse casulo de novo? Ainda bem que eu já estava com você!' }], () => {}); return; }
+    this.save.friends.push('feligon');
+    this.persistInv();
+    sfx('amigo');
+    this.ui.dialog([
+      { who: '???', text: 'Ufa! Alguém me tira daqui... AH, valeu!' },
+      { who: 'Feligon', text: 'Eu sou o FELIGON! A aranhona me prendeu nessa teia.' },
+      { who: 'Feligon', text: 'Conheço essa floresta inteira. Vou com você até a sua casa!' },
+      { who: 'Dica', text: 'O Feligon luta junto. SEGURE o botão verde 🌿 AMIGO, mire com o direcional e solte: ele lança RAÍZES que prendem os monstros e te dão 1 coração!' },
+    ], () => {});
+  }
+
+  handleFriendInput(dt) {
+    const inp = this.input, f = this.friend, p = this.player;
+    f.cd = Math.max(0, f.cd - dt);
+    if (inp.specialPressed && !this.friendAim && !this.aim && !this.beam) {
+      if (f.cd > 0) { this.ui.toast('O Feligon está recuperando o fôlego...', 1000); }
+      else {
+        this.friendAim = { tx: p.x + Math.sin(p.face) * 2.5, tz: p.z + Math.cos(p.face) * 2.5 };
+        this.friendReticle.group.visible = true;
+        sfx('mira');
+      }
+    }
+    const a = this.friendAim;
+    if (!a) return;
+    const d = inp.dir();
+    const mx = (d.x + d.y) * SQ2, mz = (-d.x + d.y) * SQ2;
+    a.tx += mx * 6 * dt; a.tz += mz * 6 * dt;
+    const ddx = a.tx - p.x, ddz = a.tz - p.z, dd = Math.hypot(ddx, ddz);
+    if (dd > 7) { a.tx = p.x + ddx / dd * 7; a.tz = p.z + ddz / dd * 7; }
+    const room = this.room;
+    a.tx = THREE.MathUtils.clamp(a.tx, room.off.x + 0.5, room.off.x + room.w - 0.5);
+    a.tz = THREE.MathUtils.clamp(a.tz, room.off.z + 0.5, room.off.z + room.h - 0.5);
+    p.face = turnTo(p.face, Math.atan2(a.tx - p.x, a.tz - p.z), dt * 12);
+    this.friendReticle.group.position.set(a.tx, 0.04, a.tz);
+    this.friendReticle.group.scale.setScalar(2.4 * (1 + Math.sin(this.time * 10) * 0.06));
+    this.friendReticle.group.rotation.y -= dt * 2;
+    if (!inp.special) {
+      f.cmd = { tx: a.tx, tz: a.tz, t: 0 };
+      f.cd = 9;
+      this.friendAim = null;
+      this.friendReticle.group.visible = false;
+      p.meleeT = 0.22; p.meleeSide = 1;
+      this.ui.toast('🌿 Feligon, AGORA!', 900);
+    }
+  }
+
+  updateFriend(dt) {
+    const f = this.friend, p = this.player;
+    this.ui.friendCooldown(f.cd);
+    f.atkCd = Math.max(0, f.atkCd - dt);
+    if (f.restT > 0) { f.restT -= dt; f.moving = false; return; }
+    let tx = null, tz = null, speed = 4.6;
+    if (f.cmd) {
+      f.cmd.t += dt;
+      tx = f.cmd.tx; tz = f.cmd.tz; speed = 9;
+      if (Math.hypot(tx - f.x, tz - f.z) < 0.45 || f.cmd.t > 1.6) { this.castRoots(tx, tz); f.cmd = null; }
+    } else {
+      let best = null, bd = 4.8;
+      for (const e of this.targets()) { const d = Math.hypot(e.x - p.x, e.z - p.z); if (d < bd) { bd = d; best = e; } }
+      if (best) {
+        const d = Math.hypot(best.x - f.x, best.z - f.z);
+        f.face = Math.atan2(best.x - f.x, best.z - f.z);
+        if (d > best.r + 0.55) { tx = best.x; tz = best.z; }
+        else if (f.atkCd <= 0) {
+          f.atkCd = 0.6; f.punch = 0.22;
+          this.damage(best, 1.5, Math.sin(f.face), Math.cos(f.face));
+          for (let i = 0; i < 4; i++) this.fx.spawn(best.x, 0.7, best.z, { color: 0x7dff6a, size: 0.08, vx: (Math.random() - 0.5) * 3, vy: 2, vz: (Math.random() - 0.5) * 3, life: 0.4, emissive: 1 });
+          sfx('soco');
+        }
+      } else {
+        const bx = p.x - Math.sin(p.face) * 1.1, bz = p.z - Math.cos(p.face) * 1.1;
+        if (Math.hypot(bx - f.x, bz - f.z) > 0.6) { tx = bx; tz = bz; }
+      }
+    }
+    f.moving = tx !== null;
+    if (f.moving) {
+      const ddx = tx - f.x, ddz = tz - f.z, d = Math.hypot(ddx, ddz) || 1;
+      this.move(f, ddx / d * speed * dt, ddz / d * speed * dt, 0.26, 'player');
+      if (!f.cmd || true) f.face = turnTo(f.face, Math.atan2(ddx, ddz), dt * 12);
+      if (Math.hypot(f.x - p.x, f.z - p.z) > 9) { f.x = p.x; f.z = p.z; } // ficou preso: volta para perto
+    }
+    // monstro encostou no Feligon: ele cai e descansa um pouquinho (não se machuca de verdade)
+    f.hitCheck -= dt;
+    if (f.hitCheck <= 0) {
+      f.hitCheck = 0.3;
+      for (const e of this.targets()) {
+        if ((e.lunge && e.lunge.t > 0.38) || e.state === 'bote' || e.state === 'investida') {
+          if (Math.hypot(e.x - f.x, e.z - f.z) < e.r + 0.35) { f.restT = 1.6; this.fx.sparks(f.x, 0.8, f.z, 0xffffff, 6); break; }
+        }
+      }
+    }
+  }
+
+  castRoots(x, z) {
+    const p = this.player;
+    this.rootBurst(x, z);
+    for (let i = 0; i < 3; i++) this.rootBurst(x + Math.cos(i * 2.1) * 0.9, z + Math.sin(i * 2.1) * 0.9);
+    this.fx.ring(x, z, 2, 0.5, 0x7dff6a);
+    sfx('raizes');
+    this.shake = Math.max(this.shake, 0.2);
+    let n = 0;
+    for (const t of this.targets()) {
+      if (Math.hypot(t.x - x, t.z - z) > 2 + t.r) continue;
+      t.rootT = t.type === 'capitao' || t.type === 'maeteia' || t.type === 'anciao' ? 1.6 : 3;
+      this.damage(t, t.rootT > 2 ? 2 : 3, 0, 0);
+      n++;
+    }
+    if (p.hp < MAX_HP) { p.hp++; sfx('coracao'); this.ui.toast(`🌿 Raízes! ${n ? `${n} monstro${n > 1 ? 's' : ''} preso${n > 1 ? 's' : ''}` : ''} +1 ❤️`, 1400); }
+    else if (n) this.ui.toast(`🌿 ${n} monstro${n > 1 ? 's' : ''} preso${n > 1 ? 's' : ''}!`, 1200);
+  }
+
+  animateFriend(dt) {
+    const f = this.friend;
+    if (!f) return;
+    const m = f.model;
+    m.root.position.set(f.x, 0, f.z);
+    m.root.rotation.y = f.face;
+    m.root.visible = !this.trans;
+    f.glow.position.set(f.x, 0.03, f.z);
+    f.glow.visible = m.root.visible;
+    if (f.moving) f.walkT += dt * 12;
+    const sw = f.moving ? Math.sin(f.walkT) * 0.8 : 0;
+    m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw;
+    m.arms[0].rotation.x = -sw; m.arms[1].rotation.x = sw;
+    f.punch = Math.max(0, (f.punch || 0) - dt);
+    if (f.punch > 0) m.arms[1].rotation.x = -1.6 * Math.sin((1 - f.punch / 0.22) * Math.PI);
+    if (f.cmd) { m.arms[0].rotation.x = -2.6; m.arms[1].rotation.x = -2.6; }
+    m.body.rotation.x = f.restT > 0 ? -0.9 : 0;
+    m.body.position.y = f.restT > 0 ? -0.15 : (f.moving ? Math.abs(Math.sin(f.walkT)) * 0.035 : 0);
   }
 
   // ---------------- bomba escondida num canto da arena ----------------
@@ -1358,6 +1800,7 @@ export class Game {
       b.group.rotation.x += dt * 9; b.group.rotation.z += dt * 5;
       b.spark.visible = Math.random() < 0.7;
       if (Math.random() < 0.8) this.fx.spawn(x, y + 0.2, z, { color: 0xffd23a, size: 0.06, life: 0.25, emissive: 1.5, vy: 0.5 });
+      if (Math.random() < 0.15) sfx('pavio');
       if (k >= 1) {
         this.scene.remove(b.group);
         this.bombs.splice(i, 1);
@@ -1373,7 +1816,7 @@ export class Game {
     for (const t of this.targets()) {
       const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz);
       if (d > radius + t.r) continue;
-      if (t.type === 'capitao') this.damage(t, sup ? 14 : 6, dx / (d || 1), dz / (d || 1));
+      if (t.name) this.damage(t, sup ? 14 : 6, dx / (d || 1), dz / (d || 1));
       else if (sup) { t.armor = 0; this.damage(t, 99, dx / (d || 1), dz / (d || 1)); }
       else { if (t.armor) t.armor = 0; this.damage(t, 7, dx / (d || 1), dz / (d || 1)); }
     }
@@ -1391,6 +1834,17 @@ export class Game {
         for (let i = 0; i < 6; i++) { const a = Math.random() * 6.28; this.fx.spawn(cx, 0.6, cz, { color: 0x8c8690, size: 0.18 + Math.random() * 0.15, vx: Math.cos(a) * 3, vy: 3 + Math.random() * 3, vz: Math.sin(a) * 3, life: 1.2, gravity: 12, shrink: false, spin: 8 }); }
         this.fx.smoke(cx, cz, 1.2);
       }
+    }
+    for (let ty = 1; ty < room.h - 1; ty++) for (let tx = 1; tx < room.w - 1; tx++) {
+      const tt = this.tiles[ty][tx];
+      if (tt !== 'R' && tt !== 'U') continue;
+      if (Math.hypot(room.off.x + tx + 0.5 - x, room.off.z + ty + 0.5 - z) > wr) continue;
+      const kind = room.vis.breakProp(tx, ty);
+      if (!kind) continue;
+      this.tiles[ty][tx] = ',';
+      broke++;
+      const cx = room.off.x + tx + 0.5, cz = room.off.z + ty + 0.5;
+      for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28; this.fx.spawn(cx, 0.4, cz, { color: kind === 'U' ? 0x4f8a2e : 0x7c7a80, size: 0.12 + Math.random() * 0.12, vx: Math.cos(a) * 3, vy: 3 + Math.random() * 3, vz: Math.sin(a) * 3, life: 1.1, gravity: 12, shrink: false, spin: 8 }); }
     }
     if (broke) { sfx('quebra'); this.ui.toast(broke > 1 ? 'A bomba abriu um caminho novo!' : 'A bomba quebrou a parede!', 1600); }
     for (const c of room.vis.cracks) if (!c.broken && Math.hypot(room.off.x + c.tx + 0.5 - x, room.off.z + c.ty + 0.5 - z) < (sup ? 6 : 2.4)) this.hitTile(room.off.x + c.tx + 0.5, room.off.z + c.ty + 0.5, 9, false);
@@ -1494,7 +1948,7 @@ export class Game {
         if (Math.hypot(t.x - b.x, t.z - b.z) < t.r + 0.2) {
           this.damage(t, 4, Math.sin(b.dir), Math.cos(b.dir));
           dead = true;
-          if (!t.alive || t.type === 'capitao') this.thunder(t.x, t.z, !t.alive);
+          if (!t.alive || t.name) this.thunder(t.x, t.z, !t.alive);
           else this.fx.sparks(t.x, 0.9, t.z, 0x7ae8ff, 8);
           break;
         }
@@ -1591,6 +2045,8 @@ export class Game {
     m.root.rotation.y = p.face;
     if (!this.trans) m.root.visible = !p.dead && !(p.inv > 0 && Math.floor(this.time * 14) % 2 === 0);
     p.blob.position.set(p.x, 0.02, p.z);
+    this.heroGlow.position.set(p.x, 0.03, p.z);
+    this.heroGlow.visible = m.root.visible;
     const walking = p.moving && (!this.frozen || this.cine) && !this.trans;
     if (walking) p.walkT += dt * (this.isPrologue ? 13 : 11);
     const sw = walking ? Math.sin(p.walkT) * 0.8 : 0;
@@ -1607,6 +2063,7 @@ export class Game {
     m.body.rotation.x = p.dash > 0 ? 0.4 : (this.isPrologue && walking ? 0.15 : 0);
 
     for (const e of this.room.enemies) {
+      if (e.m.glow) { e.m.glow.visible = e.alive; e.m.glow.position.set(e.x, 0.03, e.z); }
       if (!e.alive) continue;
       const r = e.m.root;
       r.position.set(e.x, e.def.fly ? 0.95 + Math.sin(this.time * 4 + e.t) * 0.15 : 0, e.z);
@@ -1616,19 +2073,25 @@ export class Game {
       if (e.type === 'zumbi' || e.type === 'armadura') { e.m.legs[0].rotation.x = w; e.m.legs[1].rotation.x = -w; e.m.arms.forEach((a, i) => (a.rotation.x = e.windup ? -2.7 : -1.3 + Math.sin(this.time * 4 + i) * 0.15)); }
       if (e.type === 'aranha') e.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 18 + i) * (e.moving ? 0.35 : 0.05)));
       if (e.type === 'morcego') e.m.wings.forEach((wg, i) => (wg.rotation.z = Math.sin(this.time * 16) * 0.7 * (i ? -1 : 1)));
+      if (e.type === 'cogumelo') { e.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 9 + i * 3) * (e.moving ? 0.5 : 0))); const sw = e.puff ? 1 + e.puff.t * 0.7 : 1; e.m.cap.scale.set(sw, sw * 0.9, sw); }
+      if (e.type === 'espinho') { const k = e.aimT > 0 ? 1.25 : 1 + Math.sin(this.time * 3) * 0.04; e.m.head.scale.setScalar(k); }
+      if (e.rootT > 0) this.rootVisual(e); else if (e.rootMesh) e.rootMesh.visible = false;
     }
     const b = this.room.boss;
+    if (b && b.m.glow) { b.m.glow.visible = b.alive && b.state !== 'dormindo'; b.m.glow.position.set(b.x, 0.03, b.z); }
     if (b && b.alive) {
       const r = b.m.root;
       r.position.set(b.x, 0, b.z);
       r.rotation.y = b.face;
-      r.scale.setScalar(2.8 * (b.hit > 0 ? 1.06 : 1));
+      r.scale.setScalar(b.scale * (b.hit > 0 ? 1.06 : 1));
       const w = b.moving ? Math.sin(this.time * 7) * 0.5 : 0;
-      b.m.legs[0].rotation.x = w; b.m.legs[1].rotation.x = -w;
-      if (b.state === 'agachar') { b.m.arms.forEach((a) => (a.rotation.x = -0.4)); r.position.y = -0.15; r.rotation.x = 0.25; }
+      if (b.type === 'capitao') { b.m.legs[0].rotation.x = w; b.m.legs[1].rotation.x = -w; }
+      if (b.type === 'maeteia') { b.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 14 + i) * (b.moving ? 0.35 : 0.06))); r.position.y = b.state === 'bote' ? Math.sin(Math.min(1, b.t / 0.38) * Math.PI) * 0.9 : 0; }
+      else if (b.type === 'anciao') { const sw = b.state === 'erguer' ? -1.4 : b.state === 'galhada' ? 1.2 : Math.sin(this.time * 1.5) * 0.15; b.m.arms.forEach((a, i) => (a.rotation.x = sw * (i ? 1 : -1) * 0.6)); b.m.core.visible = true; b.m.core.scale.setScalar(b.armor <= 0 ? 1.3 + Math.sin(this.time * 8) * 0.15 : 0.8); r.rotation.z = b.rootT > 0 ? Math.sin(this.time * 9) * 0.04 : 0; }
+      else if (b.state === 'agachar') { b.m.arms.forEach((a) => (a.rotation.x = -0.4)); r.position.y = -0.15; r.rotation.x = 0.25; }
       else if (b.state === 'bote') { b.m.arms.forEach((a) => (a.rotation.x = -2.2)); r.position.y = Math.sin(Math.min(1, b.t / 0.38) * Math.PI) * 1.1; r.rotation.x = -0.2; }
       else r.rotation.x = 0;
-      if (b.state === 'erguer') b.m.arms.forEach((a) => (a.rotation.x = -2.9));
+      if (b.type !== 'capitao') { /* animado acima */ } else if (b.state === 'erguer') b.m.arms.forEach((a) => (a.rotation.x = -2.9));
       else if (b.state === 'pancada') b.m.arms.forEach((a) => (a.rotation.x = -0.6));
       else if (b.state === 'tonto') { b.m.arms.forEach((a) => (a.rotation.x = -0.2)); r.rotation.z = Math.sin(this.time * 6) * 0.08; }
       else if (b.state !== 'intro') { b.m.arms.forEach((a, i) => (a.rotation.x = -1.3 + Math.sin(this.time * 4 + i) * 0.15)); r.rotation.z = 0; }

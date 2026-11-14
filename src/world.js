@@ -1,9 +1,9 @@
 // Monta cada sala como uma MAQUETE FLUTUANTE: chão com textura, bordas de pedra, musgo, objetos.
 import * as THREE from '../vendor/three.module.min.js';
-import { roundedBox as rb, part, bake } from './geo.js';
+import { roundedBox as rb, part, bake, applyRim, groundGlow } from './geo.js';
 import { tex } from './textures.js';
 import * as P from './props.js';
-import { buildCoracao } from './models.js';
+import { buildCoracao, buildCasulo } from './models.js';
 
 const PX = 32; // pixels por quadradinho na textura do chão
 
@@ -58,6 +58,22 @@ function instanced(geo, mat, items, { cast = true, receive = true } = {}) {
   return mesh;
 }
 
+// teia de aranha desenhada (fios em vez de um quadrado)
+function webTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.strokeStyle = 'rgba(235,235,245,0.9)';
+  x.lineWidth = 1.5;
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; x.beginPath(); x.moveTo(64, 64); x.lineTo(64 + Math.cos(a) * 62, 64 + Math.sin(a) * 62); x.stroke(); }
+  for (let r = 10; r < 62; r += 9) {
+    x.beginPath();
+    for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI * 2; const px = 64 + Math.cos(a) * r, py = 64 + Math.sin(a) * r; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+    x.stroke();
+  }
+  return new THREE.CanvasTexture(c);
+}
+
 let SHARED = null;
 function shared() {
   if (!SHARED) {
@@ -68,7 +84,7 @@ function shared() {
       lava: new THREE.MeshBasicMaterial({ color: 0xff6a18 }),
       lodo: new THREE.MeshBasicMaterial({ color: 0x1fa82a }),
       bubble: new THREE.MeshBasicMaterial({ color: 0xffffff }),
-      web: new THREE.MeshBasicMaterial({ color: 0xe8e8f0, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }),
+      web: new THREE.MeshBasicMaterial({ map: webTexture(), color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }),
       under: new THREE.MeshLambertMaterial({ color: 0x3d3940 }),
       blockGeo: rb(1, 1, 1, 0.14, 2),
       wallGeo: rb(0.98, 1.1, 0.98, 0.09, 2),
@@ -122,6 +138,7 @@ export function buildRoom(room, theme, offset, seed) {
   const walls = [], lows = [], caps = [];
   const statics = new THREE.Group();
   const lavaTiles = [], lodoTiles = [], webs = [], bubbles = [];
+  const breakables = new Map();
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const t = room.tiles[y][x];
@@ -135,8 +152,15 @@ export function buildRoom(room, theme, offset, seed) {
       } else if (t === 'L') lavaTiles.push({ x: cx, y: 0.01, z: cz, color: r() < 0.3 ? 0xffb030 : 0xff5a10 });
       else if (t === '~') { lodoTiles.push({ x: cx, y: 0.02, z: cz, color: 0xffffff }); if (r() < 0.45) bubbles.push({ x: cx + (r() - 0.5) * 0.6, y: 0.07, z: cz + (r() - 0.5) * 0.6, sx: 0.08 + r() * 0.1, sy: 0.05, sz: 0.08 + r() * 0.1, color: 0x8dff6a }); }
       else if (t === 'Y') P.tree(statics, cx, cz, r);
-      else if (t === 'R') P.rock(statics, cx, cz, r);
-      else if (t === 'U') P.bush(statics, cx, cz, r);
+      else if (t === 'R' || t === 'U') {
+        // pedras e arbustos ficam separados: a bomba pode destruir
+        const bk = new THREE.Group();
+        if (t === 'R') P.rock(bk, cx, cz, r); else P.bush(bk, cx, cz, r);
+        bake(bk);
+        bk.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        group.add(bk);
+        breakables.set(`${x},${y}`, { g: bk, kind: t });
+      }
       else if (t === 'g') P.grassTuft(statics, cx, cz, r);
       else if (t === 'f') P.flowers(statics, cx, cz, r);
       else if (t === 'W') webs.push({ x: cx, z: cz });
@@ -251,6 +275,20 @@ export function buildRoom(room, theme, offset, seed) {
     group.add(o.group);
     return { lx: pt.x + 0.5, lz: pt.y + 0.5, ...o, locked: false };
   };
+  let cocoon = null;
+  if (room.cocoon) {
+    const g = buildCasulo();
+    g.position.set(room.cocoon.x + 0.5, 0, room.cocoon.y + 0.5);
+    group.add(g);
+    cocoon = { lx: room.cocoon.x + 0.5, lz: room.cocoon.y + 0.5, g };
+  }
+  const breakProp = (x, y) => {
+    const b = breakables.get(`${x},${y}`);
+    if (!b) return null;
+    b.g.visible = false;
+    breakables.delete(`${x},${y}`);
+    return b.kind;
+  };
   const portal = makeGate(room.portal, false);
   const exit = makeGate(room.exit, true);
   // portal de volta para a sala anterior (laranja)
@@ -261,13 +299,16 @@ export function buildRoom(room, theme, offset, seed) {
   if (room.merchant) {
     const o = P.merchant();
     o.group.position.set(room.merchant.x + 0.5, 0, room.merchant.y + 0.5);
+    applyRim(o.group, 0xc58cff, 1.2);
+    const mg = groundGlow(0xb070ff, 0.7, 0.5);
+    o.group.add(mg);
     o.group.visible = false;
     group.add(o.group);
     merchant = { lx: room.merchant.x + 0.5, lz: room.merchant.y + 0.5, ...o, here: false };
   }
 
   return {
-    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall,
+    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall, breakProp, cocoon,
     center: new THREE.Vector3(offset.x + W / 2, 0, offset.z + H / 2),
   };
 }
