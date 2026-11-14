@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS, SOLID } from '../src/levels.js';
 
-const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceF'.split(''));
+const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceFD'.split(''));
 
 test('o jogo tem 8 fases planejadas em 4 mundos, mais o prólogo', () => {
   assert.equal(TOTAL_PHASES, 8);
@@ -40,6 +40,7 @@ for (const L of LEVELS) {
   test(`${L.title}: dá para atravessar todas as salas`, () => {
     P.rooms.forEach((r, i) => {
       const reach = reachable(r);
+      const reachV = reachable(r, { openVines: true });
       const goal = r.portal || r.exit;
       if (goal) assert.ok(reach.has(goal.x, goal.y), `sala ${i + 1}: não chega no ${r.portal ? 'portal' : 'saída'}`);
       if (r.lake.length) {
@@ -47,7 +48,8 @@ for (const L of LEVELS) {
         assert.ok(near, 'precisa conseguir chegar na beira do lago');
       }
       for (const c of r.checkpoints) assert.ok(reach.has(c.x, c.y), `fogueira inalcançável na sala ${i + 1}`);
-      for (const c of r.chests.filter((c) => c.kind !== 'secreto')) assert.ok(reach.has(c.x, c.y), `baú ${c.kind} inalcançável na sala ${i + 1}`);
+      for (const c of r.chests.filter((c) => c.kind !== 'secreto')) assert.ok(reachV.has(c.x, c.y), `baú ${c.kind} inalcançável na sala ${i + 1}`);
+      for (const v of r.vines) assert.ok([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach.has(v.x + dx, v.y + dy)), `portão de raízes sem acesso na sala ${i + 1}`);
       for (const s of r.spawners) assert.ok(reach.has(s.x, s.y), `saída de monstros presa na sala ${i + 1}`);
     });
   });
@@ -131,6 +133,12 @@ test('a Fase 2 termina na arena do Capitão de Ferro', () => {
   const last = P.rooms[P.rooms.length - 1];
   assert.ok(last.boss);
   assert.ok(reachable(last).has(last.boss.x, last.boss.y));
+});
+
+test('portões de raízes guardam prêmios no Mundo 2 (só depois do Feligon)', () => {
+  const f4 = parseLevel(LEVELS.find((l) => l.id === 4));
+  assert.ok(f4.rooms.some((r) => r.vines.length), 'a Fase 4 precisa de portão de raízes');
+  for (const L of LEVELS.filter((l) => l.world < 2 || l.id === 3)) assert.ok(parseLevel(L).rooms.every((r) => !r.vines.length), `${L.title} não pode ter portão de raízes (Feligon ainda não chegou)`);
 });
 
 test('a dificuldade aumenta de fase em fase', () => {

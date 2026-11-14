@@ -1,5 +1,5 @@
 // Regras de progresso, estrelas e Forja. Sem Three.js: testado em Node.
-import { newInventory, normalizeInventory } from './inventory.js';
+import { newInventory, normalizeInventory, capacityFor } from './inventory.js';
 
 export const SAVE_VERSION = 1;
 
@@ -45,8 +45,8 @@ export function normalizeSave(raw) {
     }
   }
   s.stars = stars;
-  s.inventory = normalizeInventory(raw.inventory);
-  s.friends = Array.isArray(raw.friends) ? raw.friends.filter((f) => f === 'feligon' || f === 'dait') : [];
+  s.friends = Array.isArray(raw.friends) ? [...new Set(raw.friends.filter((f) => f === 'feligon' || f === 'dait'))] : [];
+  s.inventory = normalizeInventory(raw.inventory, capacityFor(s.friends));
   s.endings = raw.endings && typeof raw.endings === 'object' ? { ...raw.endings } : {};
   if (raw.endingSeen) s.endings[1] = true;
   s.storySeen = !!s.storySeen;

@@ -282,6 +282,29 @@ export function buildRoom(room, theme, offset, seed) {
     group.add(g);
     cocoon = { lx: room.cocoon.x + 0.5, lz: room.cocoon.y + 0.5, g };
   }
+  // portões de raízes (só o Feligon abre)
+  const vines = new Map();
+  for (const v of room.vines) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const vx = -0.36 + i * 0.18;
+      part(g, rb(0.09, 1.2, 0.09, 0.04), 0x3f6b2a, 'lit', vx, 0.6, (i % 2) * 0.1 - 0.05, 0, 0, (i - 2) * 0.06);
+      part(g, rb(0.18, 0.05, 0.1, 0.02), 0x5c9a36, 'lit', vx + 0.06, 0.35 + i * 0.15, 0.06, 0, 0, 0.5);
+      part(g, rb(0.16, 0.05, 0.1, 0.02), 0x5c9a36, 'lit', vx - 0.05, 0.8 - i * 0.08, -0.06, 0, 0, -0.5);
+    }
+    part(g, rb(0.95, 0.1, 0.14, 0.04), 0x2f5a20, 'lit', 0, 0.25, 0, 0, 0, 0.05);
+    part(g, rb(0.95, 0.1, 0.14, 0.04), 0x2f5a20, 'lit', 0, 0.9, 0, 0, 0, -0.06);
+    for (const [y, c] of [[0.5, 0xff5a8a], [1.05, 0xffd23a]]) part(g, rb(0.08, 0.08, 0.04, 0.02), c, 'glow', 0.1, y, 0.12);
+    bake(g);
+    // duas camadas cruzadas: fecha o quadradinho de todos os lados
+    const both = new THREE.Group();
+    both.add(g);
+    const g2 = g.clone(); g2.rotation.y = Math.PI / 2; both.add(g2);
+    both.position.set(v.x + 0.5, 0, v.y + 0.5);
+    group.add(both);
+    vines.set(`${v.x},${v.y}`, both);
+  }
+  const openVine = (x, y) => { const g = vines.get(`${x},${y}`); if (!g) return false; g.visible = false; vines.delete(`${x},${y}`); return true; };
   const breakProp = (x, y) => {
     const b = breakables.get(`${x},${y}`);
     if (!b) return null;
@@ -308,7 +331,7 @@ export function buildRoom(room, theme, offset, seed) {
   }
 
   return {
-    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall, breakProp, cocoon,
+    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall, breakProp, cocoon, openVine,
     center: new THREE.Vector3(offset.x + W / 2, 0, offset.z + H / 2),
   };
 }

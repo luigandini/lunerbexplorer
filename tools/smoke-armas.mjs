@@ -31,7 +31,7 @@ await G(() => window.__lunerb.startLevel(1));
 await page.waitForFunction(() => window.__lunerb.game.running && window.__lunerb.ui.dialogOpen, { timeout: 60000 });
 await dlg();
 // bombas: segura e solta
-await G(() => { const g = window.__lunerb.game; g.ui.invincible = true; g.testMode = true; g.inv.slots[1] = { id: 'bombas', ammo: 3 }; g.inv.sel = 1; g.refreshSlots();
+await G(() => { const g = window.__lunerb.game; g.ui.invincible = true; g.testMode = true; g.inv.slots[0] = { id: 'bombas', ammo: 3 }; g.inv.sel = 0; g.refreshSlots();
   g.player.x = g.room.off.x + 6.5; g.player.z = g.room.off.z + 6.5; g.player.face = Math.PI / 2;
   const e = g.room.enemies.find((e) => e.alive); e.x = g.room.off.x + 10.5; e.z = g.room.off.z + 6.5; e.awake = false; });
 await page.keyboard.down('j'); await page.waitForFunction(() => !!window.__lunerb.game.aim, { timeout: 60000 });
@@ -43,22 +43,25 @@ await shot('20-mira-bomba');
 await page.keyboard.up('j');
 await page.waitForFunction(() => window.__lunerb.game.scorches.length > 0, { timeout: 60000 });
 await shot('21-explosao');
-console.log('bomba', await G(() => { const g = window.__lunerb.game; return { ammo: g.inv.slots[1] && g.inv.slots[1].ammo, mortos: g.room.enemies.filter((e) => !e.alive).length, hp: g.player.hp }; }));
+console.log('bomba', await G(() => { const g = window.__lunerb.game; return { ammo: g.inv.slots[0] && g.inv.slots[0].ammo, mortos: g.room.enemies.filter((e) => !e.alive).length, hp: g.player.hp }; }));
 // bomba quebra parede de dentro
 console.log('parede quebrada', await G(() => { const g = window.__lunerb.game; const r = g.room; const before = r.tiles[2][4]; g.explode(false, r.off.x + 4.5, r.off.z + 2.5); return { antes: before, depois: r.tiles[2][4], borda: r.tiles[0][4] }; }));
 await wait(600); await shot('20b-parede');
 // arma de choque
-await G(() => { const g = window.__lunerb.game; g.inv.slots[2] = { id: 'choque' }; g.inv.sel = 2; g.refreshSlots(); g.weaponCd = 0;
+await G(() => { const g = window.__lunerb.game; g.inv.slots[1] = { id: 'choque' }; g.inv.sel = 1; g.refreshSlots(); g.weaponCd = 0;
   const e = g.room.enemies.find((e) => e.alive); if (e) { e.x = g.player.x + 2; e.z = g.player.z + 2; } });
 await page.keyboard.down('j'); await wait(200); await page.keyboard.up('j');
 await page.waitForFunction(() => window.__lunerb.game.bolts.length > 0, { timeout: 30000 }).catch(() => {});
 await shot('22-choque');
 // turbina
-await G(() => { const g = window.__lunerb.game; g.inv.slots[2] = { id: 'turbina' }; g.inv.sel = 2; g.refreshSlots(); g.weaponCd = 0; g.player.face = Math.PI / 2 + 0.3; });
+await G(() => { const g = window.__lunerb.game; g.inv.slots[1] = { id: 'turbina' }; g.inv.sel = 1; g.refreshSlots(); g.weaponCd = 0; g.player.face = Math.PI / 2 + 0.3; });
 await page.keyboard.down('j'); await wait(150); await page.keyboard.up('j');
 await page.waitForFunction(() => window.__lunerb.game.beam && window.__lunerb.game.beam.t > 0.2, { timeout: 30000 });
 await shot('23-turbina');
-console.log('turbina', await G(() => { const g = window.__lunerb.game; return { ligada: !!g.beam, face: g.player.face.toFixed(2) }; }));
+const a0 = await G(() => window.__lunerb.game.beam.angle);
+const px0 = await G(() => window.__lunerb.game.player.x);
+await page.keyboard.down('w'); await wait(1500); await page.keyboard.up('w');
+console.log('turbina', await G((a) => { const g = window.__lunerb.game; return { ligada: !!g.beam, girou: Math.abs(g.beam.angle - a.a0) > 0.1, parado: Math.abs(g.player.x - a.px0) < 0.05 }; }, { a0, px0 }));
 await page.keyboard.down('j'); await wait(150); await page.keyboard.up('j');
 await page.waitForFunction(() => !window.__lunerb.game.beam, { timeout: 30000 });
 // loja

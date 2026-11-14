@@ -8,7 +8,7 @@ Pode ser instalado na tela inicial ("Adicionar à tela inicial") e funciona sem 
 - Link para jogar: https://luigandini.github.io/lunerbexplorer/
 - História completa: prólogo + 8 fases em 4 mundos. Esta versão (v4) tem o **Prólogo**, o **Mundo 1: Fortaleza de Cinzarocha** (fases 1–2) e o **Mundo 2: Bosque dos Sussurros** (fases 3–4, com o Feligon).
 - Estilo: 3D estilizado em salas-maquete flutuantes (cada sala aparece inteira na tela).
-- Versões anteriores guardadas: …/versao-01/ (blocos), …/versao-02/ (maquete), …/versao-03/ (armas novas, antes do Mundo 2)
+- Versões anteriores guardadas: …/versao-01/ (blocos), …/versao-02/ (maquete), …/versao-03/ (armas novas), …/versao-04/ (antes da troca de herói)
 - Celular muito simples travando? Abra com `?baixa` no fim do link (modo leve, sem sombras). O jogo também liga esse modo sozinho se perceber que está lento.
 
 ## Controles
@@ -18,13 +18,18 @@ Pode ser instalado na tela inicial ("Adicionar à tela inicial") e funciona sem 
 - No computador: WASD/setas para andar, J ataca, K turbo.
 
 ## Armas (v3)
-- Mochila com 3 espaços (toque no quadradinho para escolher): a Booteshiscore sempre fica + 2 armas novas.
+- Cada herói tem sua **arma própria** fora da mochila (Lunerb: Booteshiscore; Feligon: estilingue de sementes).
+- **Mochila do time**: 2 espaços + 1 por amigo resgatado; todos usam tudo. Toque no quadradinho para escolher.
 - **Bombas** e **Super Bomba**: segure ATACAR para a mira correr no chão, solte para jogar. Perto demais machuca o Lunerb.
 - **Arma de Choque**: raio que persegue o monstro (alcance curto). **Turbina de Laser**: toque liga, toque desliga; trava o Lunerb e atira reto.
 - Diamantes compram armas com o **Mercador Misterioso**, que aparece de surpresa em algumas salas.
 - Desmaiou? A fase recomeça da primeira sala (diamantes e armas ficam). Fogueira azul recupera a vida. Dá para voltar para a sala anterior pelo portal laranja.
 
-## Amigo (Mundo 2)
+## Amigos e troca de herói (Mundo 2)
+- Toque no **rostinho** no canto direito (ou 3 toques rápidos no botão verde) para jogar com o outro herói.
+- Cada herói tem seus corações. Se o que você controla desmaiar, o outro assume na hora; o desmaiado acorda na sala seguinte. A fase só recomeça se os dois desmaiarem.
+- Jogando com o Feligon, o botão verde manda o Lunerb lançar o **Raio Negro**. **Portões de raízes** só o Feligon abre.
+
 - O **Feligon** (personagem do Felipe) é resgatado do casulo da Mãe-Teia e luta junto.
 - Botão verde **AMIGO**: segure, mire com o direcional e solte → ele lança **Raízes** (prende os monstros e dá 1 coração). Recarrega em 9 s.
 

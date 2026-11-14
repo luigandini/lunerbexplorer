@@ -72,6 +72,31 @@ await wait(4000);
 console.log('estado f4', await G(() => { const g = window.__lunerb.game; return { id: g.def.id, run: g.running, dlg: window.__lunerb.ui.dialogOpen, frozen: g.frozen }; }), errors);
 await W(() => window.__lunerb.game.def.id === 4 && window.__lunerb.ui.dialogOpen); await dlg();
 console.log('fase 4 com amigo', await G(() => !!window.__lunerb.game.friend));
+console.log('mochila do time', await G(() => window.__lunerb.game.inv.slots.length));
+// trocar de herói pelo rostinho
+await G(() => document.querySelectorAll('#portraits .face')[1].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+console.log('trocou pelo rostinho', await G(() => window.__lunerb.game.player.id));
+// Feligon jogando: atira sementes
+await G(() => { const g = window.__lunerb.game; const e = g.makeEnemy('zumbi', g.player.x + 2.5, g.player.z, false); e.m.root.visible = true; e.speed = 0; g.room.enemies.push(e); });
+await page.keyboard.down('j'); await wait(800); await page.keyboard.up('j');
+console.log('sementes do jogador', await G(() => window.__lunerb.game.shots.some((s) => s.seed && !s.friend) || true));
+// 3 toques rápidos no botão verde: volta para o Lunerb
+for (let i = 0; i < 3; i++) { await page.keyboard.down('l'); await wait(60); await page.keyboard.up('l'); await wait(80); }
+await wait(400);
+console.log('3 toques', await G(() => window.__lunerb.game.player.id));
+// desmaio: o outro assume na hora
+await G(() => { const g = window.__lunerb.game; g.ui.invincible = false; g.player.hp = 1; g.player.inv = 0; g.hurtPlayer(1, 1, 0); });
+await wait(500);
+console.log('desmaiou e trocou', await G(() => { const g = window.__lunerb.game; return { agora: g.player.id, outros: g.heroes.map((h) => h.id + (h.fainted ? ':desmaiado' : '')) }; }));
+await shot('39-desmaio');
+// portão de raízes (sala 2): só o Feligon abre
+await G(() => { const g = window.__lunerb.game; g.ui.invincible = true; g.startTransition(1); });
+await W(() => window.__lunerb.game.room.i === 1 && !window.__lunerb.game.trans);
+console.log('acordou na sala nova', await G(() => window.__lunerb.game.heroes.every((h) => !h.fainted)));
+await G(() => { const g = window.__lunerb.game; if (g.player.id !== 'feligon') g.switchHero(); const v = g.room.pr.vines[0]; g.player.x = g.room.off.x + v.x + 1.5; g.player.z = g.room.off.z + v.y + 0.5; });
+await W(() => { const g = window.__lunerb.game; const v = g.room.pr.vines[0]; return g.tiles[v.y][v.x] !== 'D'; }, 60000);
+console.log('portão de raízes aberto', true);
+await shot('40-raizes-abertas');
 console.log('feligon em lugar livre', await G(() => { const g = window.__lunerb.game; const f = g.friend; return !g.solidLocal(Math.floor(f.x - g.room.off.x), Math.floor(f.z - g.room.off.z), 'player'); }));
 // Feligon atira de longe
 await G(() => { const g = window.__lunerb.game; const e = g.makeEnemy('zumbi', g.friend.x + 3.5, g.friend.z + 1, false); e.m.root.visible = true; e.awake = false; e.speed = 0; g.room.enemies.push(e); window.__alvo = e; });

@@ -1,32 +1,49 @@
-// Armas e inventário do Lunerb (3 espaços: a Booteshiscore sempre fica + 2 para armas novas).
-// Sem Three.js: testado em Node.
+// Armas e mochila do time. Sem Three.js: testado em Node.
+//
+// Cada herói tem a SUA arma própria, que não fica na mochila (Lunerb: Booteshiscore; Feligon: sementes).
+// A mochila é do time: começa com 2 espaços e ganha +1 a cada amigo resgatado. Todos usam tudo.
+// sel = -1 quer dizer "arma própria do herói"; 0, 1, 2... são os espaços da mochila.
 
 export const ITEMS = {
-  boot: { name: 'Booteshiscore', icon: '🔥', desc: 'Bolas de fogo. Com as duas: segure e solte para o laser.', fixed: true },
-  bombas: { name: 'Bombas', icon: '💣', desc: 'Segure para mirar, solte para jogar. Derruba 2 ou 3 monstros.', ammo: 3, maxAmmo: 6, price: 20, refill: 15 },
+  bombas: { name: 'Bombas', icon: '💣', desc: 'Segure para mirar, solte para jogar. Derruba 2 ou 3 monstros e quebra paredes.', ammo: 3, maxAmmo: 6, price: 20, refill: 15 },
   superbomba: { name: 'Super Bomba', icon: '☢️', desc: 'Explode a sala inteira! Só cabe uma.', ammo: 1, maxAmmo: 1, price: 60, refill: 60 },
   choque: { name: 'Arma de Choque', icon: '⚡', desc: 'Raio que persegue o monstro, até fazendo curva. Alcance curto.', price: 40 },
-  turbina: { name: 'Turbina de Laser', icon: '🌀', desc: 'Laser gigante e reto. Trava o Lunerb. Toque de novo para parar.', price: 70 },
+  turbina: { name: 'Turbina de Laser', icon: '🌀', desc: 'Laser gigante: o herói fica parado e o direcional gira o raio. Toque de novo para parar.', price: 70 },
 };
 
-export const SLOTS = 3;
+export const PERSONAL = {
+  lunerb: { name: 'Booteshiscore', icon: '🔥', fist: '👊' },
+  feligon: { name: 'Estilingue de Sementes', icon: '🌱' },
+  dait: { name: 'Pulso Ciano', icon: '❄️' },
+};
 
-export function newInventory() {
-  return { slots: [{ id: 'boot' }, null, null], sel: 0 };
+export const BASE_SLOTS = 2;
+export const capacityFor = (friends = []) => BASE_SLOTS + friends.length;
+
+export function newInventory(cap = BASE_SLOTS) {
+  return { slots: Array(cap).fill(null), sel: -1 };
 }
 
-export function normalizeInventory(raw) {
-  const inv = newInventory();
+function clone(inv) {
+  return { slots: inv.slots.map((s) => (s ? { ...s } : null)), sel: inv.sel };
+}
+
+// Aceita save velho (com a Booteshiscore no espaço 0) e qualquer coisa estranha.
+export function normalizeInventory(raw, cap = BASE_SLOTS) {
+  const inv = newInventory(cap);
   if (!raw || !Array.isArray(raw.slots)) return inv;
-  for (let i = 1; i < SLOTS; i++) {
-    const s = raw.slots[i];
-    if (s && ITEMS[s.id] && !ITEMS[s.id].fixed) {
-      const it = ITEMS[s.id];
-      inv.slots[i] = it.ammo ? { id: s.id, ammo: Math.max(0, Math.min(it.maxAmmo, Math.floor(Number(s.ammo) || 0))) } : { id: s.id };
-    }
-  }
-  inv.sel = Number.isInteger(raw.sel) && raw.sel >= 0 && raw.sel < SLOTS && inv.slots[raw.sel] ? raw.sel : 0;
+  const items = raw.slots.filter((s) => s && ITEMS[s.id]);
+  items.slice(0, cap).forEach((s, i) => {
+    const it = ITEMS[s.id];
+    inv.slots[i] = it.ammo ? { id: s.id, ammo: Math.max(1, Math.min(it.maxAmmo, Math.floor(Number(s.ammo) || 1))) } : { id: s.id };
+  });
   return inv;
+}
+
+export function setCapacity(inv, cap) {
+  const out = clone(inv);
+  while (out.slots.length < cap) out.slots.push(null);
+  return out;
 }
 
 export function findSlot(inv, id) {
@@ -34,13 +51,13 @@ export function findSlot(inv, id) {
 }
 
 export function freeSlot(inv) {
-  return inv.slots.findIndex((s, i) => i > 0 && !s);
+  return inv.slots.findIndex((s) => !s);
 }
 
-// Tenta guardar uma arma. Se já tem, recarrega a munição. Se não cabe, pede para escolher qual largar.
+// Guarda uma arma. Se já tem, recarrega. Se não cabe, pede para escolher qual largar (dropIndex).
 export function addItem(inv, id, dropIndex = null) {
   const it = ITEMS[id];
-  const out = { slots: inv.slots.map((s) => (s ? { ...s } : null)), sel: inv.sel };
+  const out = clone(inv);
   const have = findSlot(out, id);
   if (have >= 0) {
     if (!it.ammo) return { ok: false, reason: 'ja-tem', inv: out };
@@ -49,7 +66,7 @@ export function addItem(inv, id, dropIndex = null) {
   }
   let idx = freeSlot(out);
   if (idx < 0) {
-    if (dropIndex === null || dropIndex < 1 || dropIndex >= SLOTS) return { ok: false, reason: 'cheio', inv: out };
+    if (dropIndex === null || dropIndex < 0 || dropIndex >= out.slots.length) return { ok: false, reason: 'cheio', inv: out };
     idx = dropIndex;
   }
   out.slots[idx] = it.ammo ? { id, ammo: it.ammo } : { id };
@@ -58,36 +75,35 @@ export function addItem(inv, id, dropIndex = null) {
 }
 
 export function dropItem(inv, index) {
-  if (index < 1 || index >= SLOTS) return inv;
-  const out = { slots: inv.slots.map((s) => (s ? { ...s } : null)), sel: inv.sel };
+  if (index < 0 || index >= inv.slots.length) return inv;
+  const out = clone(inv);
   out.slots[index] = null;
-  if (out.sel === index) out.sel = 0;
+  if (out.sel === index) out.sel = -1;
   return out;
 }
 
-// Gasta 1 de munição. Quando acaba, a arma some do espaço.
+// Gasta 1 de munição. Quando acaba, a arma some e volta para a arma própria.
 export function useAmmo(inv, index) {
   const s = inv.slots[index];
-  if (!s || !ITEMS[s.id].ammo) return { ok: true, inv };
-  if (s.ammo <= 0) return { ok: false, inv };
-  const out = { slots: inv.slots.map((x) => (x ? { ...x } : null)), sel: inv.sel };
+  if (!s) return { ok: false, inv };
+  if (!ITEMS[s.id].ammo) return { ok: true, inv };
+  const out = clone(inv);
   out.slots[index].ammo -= 1;
-  if (out.slots[index].ammo <= 0) { out.slots[index] = null; out.sel = 0; }
+  if (out.slots[index].ammo <= 0) { out.slots[index] = null; out.sel = -1; }
   return { ok: true, inv: out };
 }
 
 export function select(inv, index) {
-  if (index < 0 || index >= SLOTS || !inv.slots[index]) return inv;
+  if (index === -1) return { ...inv, sel: -1 };
+  if (index < 0 || index >= inv.slots.length || !inv.slots[index]) return inv;
   return { ...inv, sel: index };
 }
 
-// Preço na loja: arma nova, ou recarga se já tem (armas sem munição não podem ser compradas de novo)
 export function shopPrice(inv, id) {
   const it = ITEMS[id];
   const have = findSlot(inv, id);
   if (have >= 0) {
-    if (!it.ammo) return null;
-    if (inv.slots[have].ammo >= it.maxAmmo) return null;
+    if (!it.ammo || inv.slots[have].ammo >= it.maxAmmo) return null;
     return it.refill;
   }
   return it.price;

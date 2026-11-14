@@ -7,7 +7,7 @@ import { material, applyRim, groundGlow } from './geo.js';
 import { tex } from './textures.js';
 import { FX } from './fx.js';
 import { sfx, playMusic, humStart, humStop, playAmbience, stopAmbience } from './audio.js';
-import { ITEMS, normalizeInventory, addItem, useAmmo, select, shopPrice, findSlot } from './inventory.js';
+import { ITEMS, PERSONAL, normalizeInventory, addItem, useAmmo, select, shopPrice, findSlot, setCapacity, capacityFor } from './inventory.js';
 import * as Props from './props.js';
 import { weaponStats, UPGRADES, upgradeCost, buyUpgrade } from './progress.js';
 
@@ -78,7 +78,7 @@ export class Game {
     this.onDeath = onDeath;
     this.onPersist = onPersist;
     this.stats = weaponStats(save);
-    this.inv = normalizeInventory(save.inventory);
+    this.inv = normalizeInventory(save.inventory, capacityFor(save.friends));
     this.difficulty = def.difficulty || 1;
     const theme = THEMES[def.light || def.theme];
     this.themeCfg = theme;
@@ -134,23 +134,10 @@ export class Game {
       return room;
     });
 
-    // herói
-    const model = buildHero(def.hero);
-    model.root.scale.setScalar(HERO_SCALE);
-    applyRim(model.root, RIM.hero, 0.55);
-    scene.add(model.root);
-    this.heroGlow = groundGlow(0xffc890, 0.55, 0.35);
-    scene.add(this.heroGlow);
-    const blob = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
-    blob.rotation.x = -Math.PI / 2;
-    blob.visible = this.lowQuality;
-    scene.add(blob);
-    this.player = {
-      x: 0, z: 0, face: Math.PI * 0.75, hp: MAX_HP, inv: 0, kvx: 0, kvz: 0, model, blob,
-      weapons: this.isPrologue ? 0 : save.weapons, atkCd: 0, charge: 0, charging: false, aimT: 0, meleeT: 0, meleeSide: 0,
-      dash: 0, dashDx: 0, dashDz: 0, dashHit: new Set(), turbo: 1, walkT: 0, moving: false,
-      safeX: 0, safeZ: 0, dead: false, sink: 0,
-    };
+    // heróis (o Lunerb começa; os amigos entram no time)
+    this.heroes = [];
+    this.player = this.makeHero(def.hero, def.hero === 'lunerb' && !this.isPrologue ? save.weapons : 0);
+    this.heroes.push(this.player);
     this.updateGuns();
     this.pendingFriend = !this.isPrologue && def.world >= 2 && save.friends.includes('feligon');
 
@@ -235,7 +222,14 @@ export class Game {
     }
     this.gateArmed = false;
     this.respawn = { x: p.x, z: p.z };
-    if (this.friend) { this.friend.cmd = null; this.friend.restT = 0; this.placeFriendNear(p.x, p.z); }
+    for (const h of this.heroes) {
+      if (h === p) continue;
+      if (h.fainted) { h.fainted = false; h.hp = MAX_HP; h.inv = 1; if (!first) this.ui.toast(`${h.name} acordou!`, 1400); }
+      this.friend = h;
+      h.cmd = null; h.restT = 0;
+      this.placeFriendNear(p.x, p.z);
+    }
+    if (this.heroes.length > 1) { this.ui.setControls({ attack: true, turbo: true, friend: true }); this.refreshPortraits(); }
     room.enterT = 0; room.spawnT = 0;
     if (room.boss && room.boss.alive && !first) { p.turbo = 3; p.hp = Math.max(p.hp, 3); this.ui.toast('⚡ Turbo Negro carregado! Corra!', 1800); }
     this.viewTarget = this.fitRoom(room);
@@ -274,6 +268,61 @@ export class Game {
     return { cx: v.dot(CAM_R), cy: v.dot(CAM_U), half };
   }
 
+  makeHero(id, weapons = 0) {
+    const model = buildHero(id);
+    model.root.scale.setScalar(HERO_SCALE * (id === 'feligon' ? 0.95 : 1));
+    applyRim(model.root, id === 'feligon' ? RIM.feligon : id === 'dait' ? RIM.dait : RIM.hero, 0.55);
+    this.scene.add(model.root);
+    const glow = groundGlow(id === 'feligon' ? 0x6aff5a : id === 'dait' ? 0x2ee6ff : 0xffc890, 0.55, 0.35);
+    this.scene.add(glow);
+    const blob = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
+    blob.rotation.x = -Math.PI / 2;
+    blob.visible = this.lowQuality;
+    this.scene.add(blob);
+    return {
+      id, name: id === 'feligon' ? 'Feligon' : id === 'dait' ? 'Dait' : id === 'lucas' ? 'Lucas' : 'Lunerb',
+      x: 0, z: 0, face: Math.PI * 0.75, hp: MAX_HP, inv: 0, kvx: 0, kvz: 0, model, glow, blob,
+      weapons, atkCd: 0, charge: 0, charging: false, aimT: 0, meleeT: 0, meleeSide: 0,
+      dash: 0, dashDx: 0, dashDz: 0, dashHit: new Set(), turbo: 1, walkT: 0, moving: false,
+      safeX: 0, safeZ: 0, dead: false, sink: 0, fainted: false,
+      cmd: null, cd: 0, restT: 0, hitCheck: 0, punch: 0, stuckT: 0,
+    };
+  }
+
+  // troca quem o jogador controla (rostinho no canto ou 3 toques no botão do amigo)
+  switchHero(auto = false) {
+    const other = this.heroes.find((h) => h !== this.player && !h.fainted);
+    if (!other || this.cine || this.trans) return false;
+    this.stopBeam();
+    this.cancelAim();
+    this.friendAim = null;
+    this.friendReticle.group.visible = false;
+    const prev = this.player;
+    prev.cmd = null; prev.charging = false; prev.dash = 0;
+    other.cmd = null; other.restT = 0; other.inv = Math.max(other.inv, auto ? 1.5 : 0.4);
+    this.player = other;
+    this.friend = prev.fainted ? null : prev;
+    this.updateGuns();
+    this.refreshSlots();
+    this.ui.setControls({ attack: true, turbo: true, friend: !!this.friend });
+    this.hud(true);
+    this.fx.sparks(other.x, 1, other.z, other.id === 'feligon' ? 0x7dff6a : 0xffc890, 12);
+    sfx('amigo');
+    if (!auto) this.ui.toast(`Agora você é o ${other.name}!`, 1200);
+    return true;
+  }
+
+  heroIcon(h) { return h.id === 'feligon' ? '🍃' : h.id === 'dait' ? '❄️' : h.id === 'lucas' ? '🙂' : '⚡'; }
+
+  refreshPortraits() {
+    if (!this.heroes || this.heroes.length < 2) { this.ui.portraits(null); return; }
+    this.ui.portraits(this.heroes.map((h) => ({ id: h.id, name: h.name, icon: this.heroIcon(h), hp: h.hp, max: MAX_HP, fainted: h.fainted, active: h === this.player })), (i) => {
+      const h = this.heroes[i];
+      if (h !== this.player && !h.fainted) this.switchHero();
+      else if (h.fainted) this.ui.toast(`${h.name} está desmaiado. Ele acorda na próxima sala.`, 1500);
+    });
+  }
+
   makeEnemy(type, x, z, chase = false) {
     const d = EDEF[type];
     const m = d.build();
@@ -310,9 +359,10 @@ export class Game {
   }
 
   updateGuns() {
-    const p = this.player;
-    p.model.guns[1].visible = p.weapons >= 1;
-    p.model.guns[0].visible = p.weapons >= 2;
+    for (const h of this.heroes || [this.player]) {
+      h.model.guns[1].visible = h.id === 'lunerb' && h.weapons >= 1;
+      h.model.guns[0].visible = h.id === 'lunerb' && h.weapons >= 2;
+    }
   }
 
   setGateLocked(gate, locked) {
@@ -422,7 +472,7 @@ export class Game {
     this.sun.castShadow = false;
     this.renderer.shadowMap.enabled = false;
     this.renderer.setPixelRatio(1);
-    this.player.blob.visible = true;
+    for (const h of this.heroes) h.blob.visible = true;
     this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => (m.needsUpdate = true)); });
   }
 
@@ -492,8 +542,9 @@ export class Game {
     if (this.isPrologue) return; // no prólogo o Lucas só pode fugir
     if (this.friend) this.handleFriendInput(dt);
     if (this.friendAim) return;
-    const slot = this.inv.slots[this.inv.sel];
-    const item = slot ? slot.id : 'boot';
+    const slot = this.inv.sel >= 0 ? this.inv.slots[this.inv.sel] : null;
+    const item = slot ? slot.id : 'propria';
+    if (item === 'propria' && p.id === 'feligon') { if (inp.attack && p.atkCd <= 0) this.fireSeeds(); return; }
     if (item === 'bombas' || item === 'superbomba') { this.handleBombInput(dt, item); return; }
     if (item === 'choque') { if (inp.attackPressed || (inp.attack && this.weaponCd <= 0)) this.fireChoque(); return; }
     if (item === 'turbina') { if (inp.attackPressed) this.toggleBeam(); return; }
@@ -652,8 +703,19 @@ export class Game {
     this.fx.smoke(p.x, p.z, 1.5);
     this.stopBeam();
     this.cancelAim();
+    // o outro herói assume na hora; o desmaiado acorda na próxima sala
+    const other = this.heroes.find((h) => h !== p && !h.fainted);
+    if (!this.isPrologue && other) {
+      p.dead = false;
+      p.fainted = true;
+      p.hp = 0;
+      this.switchHero(true);
+      this.ui.bigText(`${p.name} desmaiou! ${other.name} assume!`, 1800);
+      this.refreshPortraits();
+      return;
+    }
     if (!this.isPrologue) {
-      this.ui.bigText('O Lunerb desmaiou... a fase recomeça!', 2200);
+      this.ui.bigText(this.heroes.length > 1 ? 'Os dois desmaiaram... a fase recomeça!' : 'O Lunerb desmaiou... a fase recomeça!', 2200);
       this.frozen = true;
       setTimeout(() => { if (this.running && this.onDeath) this.onDeath(this.result, this.inv); }, 2300);
       return;
@@ -1056,12 +1118,14 @@ export class Game {
       c.open = true;
       sfx('bau');
       this.fx.sparks(ox + c.lx, 0.6, oz + c.lz, 0xffe070, 12);
-      if (c.kind === 'arma' && p.weapons < this.def.weaponReward) {
-        p.weapons = this.def.weaponReward;
+      const lun = this.heroes.find((h) => h.id === 'lunerb');
+      if (c.kind === 'arma' && lun && lun.weapons < this.def.weaponReward) {
+        lun.weapons = this.def.weaponReward;
         this.updateGuns();
+        this.refreshSlots();
         this.frozen = true;
         this.input.reset();
-        const lines = p.weapons === 1
+        const lines = lun.weapons === 1
           ? [{ who: 'Lunerb', text: 'Uma BOOTESHISCORE!' }, { who: 'Dica', text: 'Agora o botão vermelho solta BOLAS DE FOGO! Segure para atirar sem parar.' }, { who: 'Dica', text: 'Lá em cima ficam suas armas. Toque num quadradinho para trocar de arma.' }, { who: 'Dica', text: 'Atire nas tochas apagadas para iluminar o castelo!' }]
           : [{ who: 'Lunerb', text: 'A SEGUNDA BOOTESHISCORE! Agora tenho uma em cada mão!' }, { who: 'Dica', text: 'Toque para atirar com as duas. SEGURE e solte para o LASER POTENTE!' }];
         this.ui.dialog(lines, () => { this.frozen = false; });
@@ -1089,6 +1153,21 @@ export class Game {
         sfx('fogueira');
         this.ui.toast(first ? '🔥 Fogueira azul: sempre que encostar, recupera toda a vida!' : '🔥 Vida cheia!');
         this.fx.sparks(ox + c.lx, 0.5, oz + c.lz, 0x6ab8ff, 14);
+      }
+    }
+    // portões de raízes: só o Feligon abre
+    for (const v of room.pr.vines) {
+      if (this.tiles[v.y][v.x] !== 'D') continue;
+      if (Math.hypot(ox + v.x + 0.5 - p.x, oz + v.y + 0.5 - p.z) > 1.05) continue;
+      if (p.id === 'feligon') {
+        room.vis.openVine(v.x, v.y);
+        this.tiles[v.y][v.x] = ',';
+        this.rootBurst(ox + v.x + 0.5, oz + v.y + 0.5);
+        sfx('raizes');
+        this.ui.toast('🌿 O Feligon abriu as raízes!', 1400);
+      } else if (!room.vineHint) {
+        room.vineHint = true;
+        this.ui.toast(this.heroes.some((h) => h.id === 'feligon') ? 'Raízes mágicas! Troque para o Feligon para abrir.' : 'Raízes mágicas... alguém da floresta saberia abrir.', 2200);
       }
     }
     const portal = room.vis.portal, backG = room.vis.back;
@@ -1175,7 +1254,7 @@ export class Game {
   forceComplete() {
     const b = this.rooms[this.rooms.length - 1].boss;
     if (b && b.alive) { b.alive = false; b.m.root.visible = false; this.ui.bossBar(null); }
-    if (this.def.weaponReward > this.player.weapons) this.player.weapons = this.def.weaponReward;
+    for (const h of this.heroes) if (h.id === 'lunerb' && this.def.weaponReward > h.weapons) h.weapons = this.def.weaponReward;
     if (this.def.boss === 'maeteia' && !this.save.friends.includes('feligon')) this.save.friends.push('feligon');
     this.finish(this.isPrologue);
   }
@@ -1409,14 +1488,12 @@ export class Game {
 
   // ---------------- Feligon: o amigo ----------------
   spawnFriend(x, z) {
-    const model = buildHero('feligon');
-    model.root.scale.setScalar(HERO_SCALE * 0.95);
-    applyRim(model.root, RIM.feligon, 0.6);
-    this.scene.add(model.root);
-    const glow = groundGlow(0x6aff5a, 0.5, 0.35);
-    this.scene.add(glow);
-    this.friend = { x, z, face: 0, model, glow, cmd: null, cd: 0, atkCd: 0, restT: 0, walkT: 0, moving: false, hitCheck: 0 };
+    const f = this.makeHero('feligon');
+    f.x = x; f.z = z;
+    this.heroes.push(f);
+    this.friend = f;
     this.ui.setControls({ attack: true, turbo: true, friend: true });
+    this.refreshPortraits();
   }
 
   freeFeligon() {
@@ -1432,6 +1509,8 @@ export class Game {
     }
     if (already) { this.ui.dialog([{ who: 'Feligon', text: 'Esse casulo de novo? Ainda bem que eu já estava com você!' }], () => {}); return; }
     this.save.friends.push('feligon');
+    this.inv = setCapacity(this.inv, capacityFor(this.save.friends));
+    this.refreshSlots();
     this.persistInv();
     sfx('amigo');
     this.ui.dialog([
@@ -1439,20 +1518,33 @@ export class Game {
       { who: 'Feligon', text: 'Eu sou o FELIGON! A aranhona me prendeu nessa teia.' },
       { who: 'Feligon', text: 'Conheço essa floresta inteira. Vou com você até a sua casa!' },
       { who: 'Dica', text: 'O Feligon luta junto. SEGURE o botão verde 🌿 AMIGO, mire com o direcional e solte: ele lança RAÍZES que prendem os monstros e te dão 1 coração!' },
+      { who: 'Dica', text: 'Toque no rostinho dele no canto da tela (ou 3 toques rápidos no botão verde) para JOGAR COM O FELIGON! A mochila ganhou mais um espaço.' },
     ], () => {});
   }
 
   handleFriendInput(dt) {
-    const inp = this.input, f = this.friend, p = this.player;
-    f.cd = Math.max(0, f.cd - dt);
-    if (inp.specialPressed && !this.friendAim && !this.aim && !this.beam) {
-      if (f.cd > 0) { this.ui.toast('O Feligon está recuperando o fôlego...', 1000); }
+    const inp = this.input, p = this.player;
+    for (const h of this.heroes) h.cd = Math.max(0, h.cd - dt);
+    // 3 toques rápidos no botão verde: troca de herói
+    if (inp.specialPressed) {
+      this.specialDownT = this.time;
+      this.taps = (this.taps || []).filter((t) => this.time - t < 0.9);
+      this.taps.push(this.time);
+      if (this.taps.length >= 3) { this.taps = []; this.switchHero(); return; }
+    }
+    const f = this.friend;
+    if (!f) return;
+    // segurar (mais de um instante) começa a mira do comando
+    if (inp.special && !this.friendAim && !this.aim && !this.beam && this.time - (this.specialDownT || 0) > 0.22) {
+      if (f.cd > 0) { if (!this.cdWarned) { this.cdWarned = true; this.ui.toast(`${f.name} está recuperando o fôlego...`, 1000); } }
       else {
         this.friendAim = { tx: p.x + Math.sin(p.face) * 2.5, tz: p.z + Math.cos(p.face) * 2.5 };
+        this.friendReticle.material.color.setHex(f.id === 'feligon' ? 0x7dff6a : 0xb070ff);
         this.friendReticle.group.visible = true;
         sfx('mira');
       }
     }
+    if (!inp.special) this.cdWarned = false;
     const a = this.friendAim;
     if (!a) return;
     const d = inp.dir();
@@ -1473,7 +1565,7 @@ export class Game {
       this.friendAim = null;
       this.friendReticle.group.visible = false;
       p.meleeT = 0.22; p.meleeSide = 1;
-      this.ui.toast('🌿 Feligon, AGORA!', 900);
+      this.ui.toast(f.id === 'feligon' ? '🌿 Feligon, RAÍZES!' : '⚡ Lunerb, RAIO NEGRO!', 900);
     }
   }
 
@@ -1481,6 +1573,7 @@ export class Game {
     const f = this.friend, p = this.player;
     this.ui.friendCooldown(f.cd);
     f.atkCd = Math.max(0, f.atkCd - dt);
+    f.inv = Math.max(0, f.inv - dt);
     if (f.restT > 0) { f.restT -= dt; f.moving = false; return; }
     let tx = null, tz = null, speed = 4.8, target = null;
     // ponto de retaguarda: um pouco atrás do Lunerb
@@ -1488,7 +1581,7 @@ export class Game {
     if (f.cmd) {
       f.cmd.t += dt;
       tx = f.cmd.tx; tz = f.cmd.tz; speed = 9;
-      if (Math.hypot(tx - f.x, tz - f.z) < 0.5 || f.cmd.t > 2.2) { this.castRoots(f.cmd.tx, f.cmd.tz); f.cmd = null; }
+      if (Math.hypot(tx - f.x, tz - f.z) < 0.5 || f.cmd.t > 2.2) { if (f.id === 'feligon') this.castRoots(f.cmd.tx, f.cmd.tz); else this.castDarkBolt(f.cmd.tx, f.cmd.tz); f.cmd = null; }
     } else {
       // atira de longe no monstro mais perto (tiro fraco: metade da bola de fogo do Lunerb)
       let best = null, bd = 6.5;
@@ -1500,7 +1593,7 @@ export class Game {
           f.atkCd = 0.85;
           f.punch = 0.2;
           const dx = best.x - f.x, dz = best.z - f.z, d = Math.hypot(dx, dz) || 1;
-          this.spawnFriendShot(f.x + dx / d * 0.4, f.z + dz / d * 0.4, dx / d, dz / d);
+          this.spawnHeroShot(f, f.x + dx / d * 0.4, f.z + dz / d * 0.4, dx / d, dz / d, true);
         }
       }
       if (Math.hypot(bx - f.x, bz - f.z) > 0.8) { tx = bx; tz = bz; }
@@ -1529,14 +1622,57 @@ export class Game {
     }
   }
 
-  spawnFriendShot(x, z, dx, dz) {
+  // tiro de um herói: sementes (Feligon) ou bola de fogo (Lunerb). O amigo controlado pelo jogo atira com metade da força.
+  spawnHeroShot(h, x, z, dx, dz, ai = false) {
+    const seed = h.id === 'feligon';
     const g = new THREE.Group();
-    const core = new THREE.Mesh(BALL, material(0xd8ffb0, 'glow')); core.scale.setScalar(0.07); g.add(core);
-    const outer = new THREE.Mesh(BALL, material(0x5cdf3a, 'glow', 0.75)); outer.scale.setScalar(0.12); g.add(outer);
+    const core = new THREE.Mesh(BALL, material(seed ? 0xd8ffb0 : 0xffe27a, 'glow')); core.scale.setScalar(seed ? 0.07 : 0.09); g.add(core);
+    const outer = new THREE.Mesh(BALL, material(seed ? 0x5cdf3a : 0xff5a14, 'glow', 0.75)); outer.scale.setScalar(seed ? 0.12 : 0.15); g.add(outer);
     g.position.set(x, 0.75, z);
     this.scene.add(g);
-    this.shots.push({ x, z, dx, dz, speed: 10, life: 0.9, dmg: this.stats.fireDamage * 0.5, g, outer, friend: true });
-    sfx('folha');
+    const base = seed ? this.seedDamage() : this.stats.fireDamage;
+    this.shots.push({ x, z, dx, dz, speed: seed ? 11 : 10, life: 0.9, dmg: ai ? base * 0.5 : base, g, outer, friend: ai, seed });
+    sfx(seed ? 'folha' : 'fogo');
+  }
+
+  seedDamage() { return 0.6 + (this.save.upgrades.fogo || 0) * 0.15; }
+
+  // Feligon jogando: estilingue de sementes, rápido e mais fraquinho por tiro
+  fireSeeds() {
+    const p = this.player;
+    const { e } = this.nearestTarget(9);
+    if (e) p.face = Math.atan2(e.x - p.x, e.z - p.z);
+    p.atkCd = Math.max(0.16, 0.24 - (this.save.upgrades.rapidez || 0) * 0.025);
+    p.aimT = 0.3; p.punch = 0.15;
+    const spread = (Math.random() - 0.5) * 0.12;
+    const dx = Math.sin(p.face + spread), dz = Math.cos(p.face + spread);
+    this.spawnHeroShot(p, p.x + dx * 0.45, p.z + dz * 0.45, dx, dz, false);
+  }
+
+  // poder do Lunerb quando o Feligon manda: raio negro que cai no alvo
+  castDarkBolt(x, z) {
+    const g = new THREE.Group();
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.35, 7, 7), material(0x9a4bff, 'glow', 0.85));
+    col.position.y = 3.5;
+    g.add(col);
+    g.position.set(x, 0, z);
+    this.scene.add(g);
+    this.lasers.push({ g, life: 0.4 });
+    for (let i = 0; i < 26; i++) this.fx.lightning(x + (Math.random() - 0.5) * 2.4, z + (Math.random() - 0.5) * 2.4);
+    this.fx.ring(x, z, 2.2, 0.45, 0x9a4bff);
+    this.ui.flash('blue');
+    this.shake = Math.max(this.shake, 0.45);
+    sfx('trovao');
+    this.boomLight.position.set(x, 2, z); this.boomLight.intensity = 50; this.boomLight.color.setHex(0xb070ff);
+    setTimeout(() => this.boomLight && this.boomLight.color.setHex(0xffa040), 350);
+    let n = 0;
+    for (const t of this.targets()) {
+      if (Math.hypot(t.x - x, t.z - z) > 2.1 + t.r) continue;
+      t.rootT = t.name ? 1 : 1.5;
+      this.damage(t, t.name ? 4 : 5, 0, 0);
+      n++;
+    }
+    if (n) this.ui.toast(`⚡ Raio Negro! ${n} monstro${n > 1 ? 's' : ''} atingido${n > 1 ? 's' : ''}!`, 1200);
   }
 
   // caminho mais curto (quadradinho por quadradinho) até o alvo, desviando do que é sólido
@@ -1589,8 +1725,8 @@ export class Game {
   }
 
   // coloca o Feligon num lugar livre perto de um ponto (nunca dentro de árvore ou parede)
-  placeFriendNear(x, z, poof = false) {
-    const f = this.friend, room = this.room;
+  placeFriendNear(x, z, poof = false, f = this.friend) {
+    const room = this.room;
     if (!f || !room) return;
     let best = null, bd = 99;
     const cx = Math.floor(x - room.off.x), cz = Math.floor(z - room.off.z);
@@ -1626,12 +1762,27 @@ export class Game {
   }
 
   animateFriend(dt) {
-    const f = this.friend;
-    if (!f) return;
+    for (const h of this.heroes || []) {
+      if (h === this.player) continue;
+      const m = h.model;
+      h.blob.position.set(h.x, 0.02, h.z);
+      if (h.fainted) {
+        // desmaiado: deitado no chão até a próxima sala
+        m.root.position.set(h.x, 0.15, h.z);
+        m.root.rotation.set(0, h.face, Math.PI / 2);
+        m.root.visible = !this.trans;
+        h.glow.visible = false;
+        continue;
+      }
+      this.animateHelper(h, dt);
+    }
+  }
+
+  animateHelper(f, dt) {
     const m = f.model;
     m.root.position.set(f.x, 0, f.z);
-    m.root.rotation.y = f.face;
-    m.root.visible = !this.trans;
+    m.root.rotation.set(0, f.face, 0);
+    m.root.visible = !this.trans && !(f.inv > 0 && Math.floor(this.time * 14) % 2 === 0);
     f.glow.position.set(f.x, 0.03, f.z);
     f.glow.visible = m.root.visible;
     if (f.moving) f.walkT += dt * 12;
@@ -1639,11 +1790,12 @@ export class Game {
     m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw;
     m.arms[0].rotation.x = -sw; m.arms[1].rotation.x = sw;
     f.punch = Math.max(0, (f.punch || 0) - dt);
-    if (f.punch > 0) m.arms[1].rotation.x = -1.6 * Math.sin((1 - f.punch / 0.22) * Math.PI);
+    if (f.punch > 0) m.arms[1].rotation.x = -1.45;
     if (f.cmd) { m.arms[0].rotation.x = -2.6; m.arms[1].rotation.x = -2.6; }
     m.body.rotation.x = f.restT > 0 ? -0.9 : 0;
     m.body.position.y = f.restT > 0 ? -0.15 : (f.moving ? Math.abs(Math.sin(f.walkT)) * 0.035 : 0);
   }
+
 
   // ---------------- bomba escondida num canto da arena ----------------
   spawnArenaItem(avoid = -1) {
@@ -1693,10 +1845,10 @@ export class Game {
     if (r.reason === 'ja-tem') return;
     this.paused = true;
     this.input.reset();
-    const names = [1, 2].map((i) => `Largar ${ITEMS[this.inv.slots[i].id].icon} ${ITEMS[this.inv.slots[i].id].name}`);
+    const names = this.inv.slots.map((sl) => `Largar ${ITEMS[sl.id].icon} ${ITEMS[sl.id].name}`);
     this.ui.choice('Mochila cheia!', 'Achou 💣 Bombas. Para levar, precisa largar uma arma:', [...names, 'Deixar aqui'], (k) => {
       this.paused = false;
-      if (k < 2) take(addItem(this.inv, 'bombas', k + 1).inv); else it.waitLeave = true;
+      if (k < names.length) take(addItem(this.inv, 'bombas', k).inv); else it.waitLeave = true;
     });
   }
 
@@ -1709,7 +1861,10 @@ export class Game {
   }
 
   refreshSlots() {
-    this.ui.slots(this.isPrologue ? null : { inv: this.inv, weapons: this.player.weapons }, (i) => this.selectSlot(i));
+    const p = this.player;
+    const own = PERSONAL[p.id] || PERSONAL.lunerb;
+    const icon = p.id === 'lunerb' && p.weapons < 1 ? own.fist : own.icon;
+    this.ui.slots(this.isPrologue ? null : { inv: this.inv, personal: { icon, name: p.id === 'lunerb' && p.weapons < 1 ? 'Soco e chute' : own.name } }, (i) => this.selectSlot(i));
   }
 
   selectSlot(i) {
@@ -1720,8 +1875,9 @@ export class Game {
     sfx('clique');
     this.refreshSlots();
     this.persistInv();
-    const s = this.inv.slots[this.inv.sel];
-    if (s) this.ui.toast(`${ITEMS[s.id].icon} ${s.id === 'boot' && this.player.weapons === 0 ? 'Soco e chute' : ITEMS[s.id].name}`, 1200);
+    const s = this.inv.sel >= 0 ? this.inv.slots[this.inv.sel] : null;
+    const own = PERSONAL[this.player.id] || PERSONAL.lunerb;
+    this.ui.toast(s ? `${ITEMS[s.id].icon} ${ITEMS[s.id].name}` : `${own.icon} ${own.name}`, 1200);
   }
 
   // achou uma arma num baú
@@ -1747,11 +1903,11 @@ export class Game {
     // mochila cheia: escolher o que largar
     this.paused = true;
     this.input.reset();
-    const names = [1, 2].map((i) => `Largar ${ITEMS[this.inv.slots[i].id].icon} ${ITEMS[this.inv.slots[i].id].name}`);
+    const names = this.inv.slots.map((sl) => `Largar ${ITEMS[sl.id].icon} ${ITEMS[sl.id].name}`);
     this.ui.choice('Mochila cheia!', `Você achou ${it.icon} ${it.name}. Para levar, precisa largar uma arma:`, [...names, 'Deixar no baú'], (k) => {
       this.paused = false;
-      if (k < 2) {
-        this.inv = addItem(this.inv, id, k + 1).inv;
+      if (k < names.length) {
+        this.inv = addItem(this.inv, id, k).inv;
         this.refreshSlots();
         this.persistInv();
         this.ui.toast(`${it.icon} ${it.name} na mochila!`);
@@ -1773,7 +1929,7 @@ export class Game {
         return { id, ...ITEMS[id], cost: shopPrice(this.inv, id), have: slot >= 0, ammo: slot >= 0 ? this.inv.slots[slot].ammo : null };
       });
       const ups = Object.entries(UPGRADES).map(([key, u]) => ({ key, name: u.name, desc: u.desc, level: this.save.upgrades[key], max: u.costs.length, cost: upgradeCost(this.save, key) }));
-      this.ui.shop({ diamonds: this.save.crystals, items, ups, hasBoot: this.player.weapons > 0 }, {
+      this.ui.shop({ diamonds: this.save.crystals, items, ups, hasBoot: this.heroes.some((h) => h.weapons > 0) }, {
         buy: (id) => this.buyItem(id, render),
         upgrade: (key) => {
           const cost = upgradeCost(this.save, key);
@@ -1806,9 +1962,9 @@ export class Game {
     const r = addItem(this.inv, id);
     if (r.ok) { done(r.inv); return; }
     const it = ITEMS[id];
-    const names = [1, 2].map((i) => `Largar ${ITEMS[this.inv.slots[i].id].icon} ${ITEMS[this.inv.slots[i].id].name}`);
+    const names = this.inv.slots.map((sl) => `Largar ${ITEMS[sl.id].icon} ${ITEMS[sl.id].name}`);
     this.ui.choice('Mochila cheia!', `Para levar ${it.icon} ${it.name}, precisa largar uma arma:`, [...names, 'Cancelar'], (k) => {
-      if (k < 2) done(addItem(this.inv, id, k + 1).inv);
+      if (k < names.length) done(addItem(this.inv, id, k).inv);
     });
   }
 
@@ -2060,16 +2216,18 @@ export class Game {
     if (this.beam) { this.stopBeam(); return; }
     if (this.weaponCd > 0) { this.ui.toast('Turbina esfriando...', 900); return; }
     const p = this.player;
-    const face = Math.round(p.face / (Math.PI / 2)) * (Math.PI / 2); // só nas direções retas da sala
-    p.face = face;
-    const fx = Math.round(Math.sin(face)), fz = Math.round(Math.cos(face));
+    const { e } = this.nearestTarget(10);
+    if (e) p.face = Math.atan2(e.x - p.x, e.z - p.z);
+    const face = p.face;
+    const fx = Math.sin(face), fz = Math.cos(face);
     const g = new THREE.Group();
     const outer = new THREE.Mesh(BEAM, material(0xff4a1a, 'glow', 0.75)); g.add(outer);
     const mid = new THREE.Mesh(BEAM, material(0xffb040, 'glow', 0.85)); g.add(mid);
     const core = new THREE.Mesh(BEAM, material(0xffffff, 'glow')); g.add(core);
     g.rotation.y = face;
     this.scene.add(g);
-    this.beam = { t: 0, fx, fz, tick: 0, g, outer, mid, core };
+    this.beam = { t: 0, fx, fz, angle: face, tick: 0, g, outer, mid, core };
+    this.ui.toast('🌀 O herói fica parado: use o direcional para girar o laser!', 1600);
     sfx('turbinaOn');
     humStart();
   }
@@ -2089,6 +2247,15 @@ export class Game {
     const p = this.player;
     B.t += dt;
     if (B.t > 5) { this.stopBeam(); this.ui.toast('A Turbina esquentou! Espere um pouquinho.', 1400); return; }
+    // o herói fica no lugar, mas o direcional gira o eixo do laser
+    const d = this.input.dir();
+    if (d.x || d.y) {
+      const mx = (d.x + d.y) * SQ2, mz = (-d.x + d.y) * SQ2;
+      B.angle = turnTo(B.angle, Math.atan2(mx, mz), dt * 2.4);
+    }
+    p.face = B.angle;
+    B.fx = Math.sin(B.angle); B.fz = Math.cos(B.angle);
+    B.g.rotation.y = B.angle;
     let len = 0;
     const sx = p.x + B.fx * 0.45, sz = p.z + B.fz * 0.45;
     while (len < 16) {
@@ -2128,8 +2295,9 @@ export class Game {
     m.root.rotation.y = p.face;
     if (!this.trans) m.root.visible = !p.dead && !(p.inv > 0 && Math.floor(this.time * 14) % 2 === 0);
     p.blob.position.set(p.x, 0.02, p.z);
-    this.heroGlow.position.set(p.x, 0.03, p.z);
-    this.heroGlow.visible = m.root.visible;
+    p.glow.position.set(p.x, 0.03, p.z);
+    p.glow.visible = m.root.visible;
+    m.root.rotation.z = 0;
     const walking = p.moving && (!this.frozen || this.cine) && !this.trans;
     if (walking) p.walkT += dt * (this.isPrologue ? 13 : 11);
     const sw = walking ? Math.sin(p.walkT) * 0.8 : 0;
@@ -2230,10 +2398,11 @@ export class Game {
 
   hud(force) {
     const p = this.player;
-    const st = `${p.hp}|${this.save.crystals}|${Math.floor(p.turbo * 10)}`;
+    const st = `${p.hp}|${this.save.crystals}|${Math.floor(p.turbo * 10)}|${(this.heroes || []).map((h) => h.hp + (h.fainted ? 'f' : '') + (h === p ? 'a' : '')).join(',')}`;
     if (!force && st === this._hud) return;
     this._hud = st;
     this.ui.hud({ hp: p.hp, maxHp: MAX_HP, crystals: this.save.crystals, turbo: p.turbo, showCrystals: !this.isPrologue });
+    this.refreshPortraits();
   }
 }
 

@@ -11,6 +11,7 @@
 //             J  baú com arma nova (bombas, choque...)   V  lugar onde o mercador misterioso pode aparecer
 //             P  início da fase    N  entrada da sala   X  portal para a próxima sala   E  saída da fase
 //             z  zumbi mutante   a  zumbi de armadura   s  aranha   m  morcego de brasa
+//             D  portão de raízes (só o Feligon abre)
 //             c  cogumelo-espora   e  planta-espinho   K  chefão da fase   F  casulo (Feligon preso)
 
 export const WORLDS = [
@@ -335,8 +336,8 @@ export const LEVELS = [
       ] },
       { name: 'Lagoa Tóxica', map: [
         'YYYYYYYYYYYYY',
-        'Y,,,,,,,,,e,Y',
-        'Y,,~~~,,,,,,Y',
+        'YBD,,,,,,,e,Y',
+        'YR,~~~,,,,,,Y',
         'N,,~~~,,c,,,Y',
         'Y,,,,,,,~~,,Y',
         'Y,,C,,,,~~,,X',
@@ -357,8 +358,8 @@ export const LEVELS = [
       ] },
       { name: 'Bosque Sombrio', map: [
         'YYYYYYYYYYYYY',
-        'Y,,m,,,,,T,,Y',
-        'Y,,,,U,,,,,,Y',
+        'Y,,m,,,,,TDHY',
+        'Y,,,,U,,,,,RY',
         'N,,,,,,,,m,,Y',
         'Y,,,R,,,c,,,Y',
         'Y,,,,,,,,,,,X',
@@ -383,7 +384,7 @@ export const LEVELS = [
   },
 ];
 
-export const SOLID = new Set(['#', 'T', 'Q', 'Y', 'R', 'U', '~']);
+export const SOLID = new Set(['#', 'T', 'Q', 'Y', 'R', 'U', '~', 'D']);
 export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego', c: 'cogumelo', e: 'espinho' };
 export const ROOM_SPACING = 22; // distância entre as maquetes no "espaço"
 
@@ -392,7 +393,7 @@ export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
   const w = rows[0].length;
   const out = {
     index, w, h, tiles: [], entry: null, isStart: false, portal: null, exit: null,
-    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null,
+    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null, vines: [],
   };
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -415,6 +416,7 @@ export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
       else if (c === 'C') { out.checkpoints.push({ x, y }); }
       else if (c === 'T') { out.torches.push({ x, y }); }
       else if (c === 'Q') { out.cracks.push({ x, y }); }
+      else if (c === 'D') { out.vines.push({ x, y }); }
       else if (c === 'O') { out.spawners.push({ x, y }); tile = ','; }
       else if (c === '~') { out.lake.push({ x, y }); }
       row.push(tile);
@@ -430,10 +432,10 @@ export function parseLevel(level) {
 }
 
 // Busca em largura: até onde o personagem chega andando a partir da entrada da sala.
-export function reachable(room, { openCracks = false } = {}) {
+export function reachable(room, { openCracks = false, openVines = false } = {}) {
   const seen = new Set();
   const key = (x, y) => y * room.w + x;
-  const blocked = (t) => (SOLID.has(t) && !(t === 'Q' && openCracks)) || t === 'L';
+  const blocked = (t) => (SOLID.has(t) && !(t === 'Q' && openCracks) && !(t === 'D' && openVines)) || t === 'L';
   const q = [[room.entry.x, room.entry.y]];
   seen.add(key(room.entry.x, room.entry.y));
   while (q.length) {

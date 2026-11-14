@@ -155,3 +155,16 @@ button.corner { position: absolute; right: 16px; top: 14px; background: rgba(0,0
 .phase.next { background: #d42020; box-shadow: 0 4px 0 #6a0a0a, 0 0 14px #ff5a3a; animation: pulse 1.2s infinite; }
 .phase.done { background: #5a2a2a; box-shadow: 0 4px 0 #2a1010; }
 @keyframes pulse { 50% { transform: scale(1.06); } }
+
+.slot.own { border-color: #ff8a5a88; }
+.slot.own.sel { border-color: #ffd23a; }
+.slot-sep { width: 2px; background: #ffffff33; margin: 6px 2px; border-radius: 2px; }
+#portraits { position: absolute; right: max(14px, env(safe-area-inset-right)); top: 62px; display: flex; gap: 6px; pointer-events: auto; }
+.face { width: 64px; height: 58px; border-radius: 14px; background: rgba(10,8,20,.7); border: 2px solid #ffffff33; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px; }
+.face span { font-size: 20px; line-height: 1; }
+.face b { font-size: 10px; margin-top: 1px; }
+.face em { width: 46px; height: 5px; background: #3a2a30; border-radius: 3px; margin-top: 2px; overflow: hidden; }
+.face em i { display: block; height: 100%; background: #ff3355; }
+.face.lunerb.active { border-color: #ff6a4a; box-shadow: 0 0 10px #ff6a4a99; }
+.face.feligon.active { border-color: #6aff5a; box-shadow: 0 0 10px #6aff5a99; }
+.face.out { opacity: .5; filter: grayscale(1); }

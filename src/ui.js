@@ -125,20 +125,42 @@ export class UI {
 
   get dialogOpen() { return !!this.dialogQueue || !!this.choiceOpen; }
 
-  // quadradinhos das armas (toque para escolher)
+  // arma própria do herói + quadradinhos da mochila do time (toque para escolher)
   slots(state, onSelect) {
     const box = $('slots');
     if (!state) { box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
     box.innerHTML = '';
-    state.inv.slots.forEach((s, i) => {
+    const mk = (i, html, sel, empty) => {
       const b = document.createElement('button');
-      b.className = `slot${i === state.inv.sel ? ' sel' : ''}${s ? '' : ' empty'}`;
-      if (s) {
-        const icon = s.id === 'boot' ? (state.weapons >= 1 ? '🔥' : '👊') : ITEM_ICONS[s.id];
-        b.innerHTML = `<span>${icon}</span>${s.ammo != null ? `<i>${s.ammo}</i>` : ''}`;
-        b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); onSelect(i); });
-      } else b.innerHTML = '<span>·</span>';
+      b.className = `slot${sel ? ' sel' : ''}${empty ? ' empty' : ''}${i === -1 ? ' own' : ''}`;
+      b.innerHTML = html;
+      if (!empty) b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); onSelect(i); });
+      box.appendChild(b);
+    };
+    mk(-1, `<span>${state.personal.icon}</span>`, state.inv.sel === -1, false);
+    const sep = document.createElement('div'); sep.className = 'slot-sep'; box.appendChild(sep);
+    state.inv.slots.forEach((s, i) => {
+      if (s) mk(i, `<span>${ITEM_ICONS[s.id]}</span>${s.ammo != null ? `<i>${s.ammo}</i>` : ''}`, i === state.inv.sel, false);
+      else mk(i, '<span>·</span>', false, true);
+    });
+  }
+
+  // rostinhos dos heróis: toque para trocar quem você controla
+  portraits(list, onTap) {
+    const box = $('portraits');
+    if (!list) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const key = JSON.stringify(list);
+    if (key === this.portraitKey) return;
+    this.portraitKey = key;
+    box.innerHTML = '';
+    list.forEach((h, i) => {
+      const b = document.createElement('button');
+      b.className = `face ${h.id}${h.active ? ' active' : ''}${h.fainted ? ' out' : ''}`;
+      const pct = Math.max(0, h.hp / h.max) * 100;
+      b.innerHTML = `<span>${h.fainted ? '😵' : h.icon}</span><b>${h.name}</b><em><i style="width:${pct}%"></i></em>`;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); onTap(i); });
       box.appendChild(b);
     });
   }
