@@ -147,7 +147,7 @@ export function campfire() {
 export function chest(kind) {
   const g = new THREE.Group();
   const wood = kind === 'secreto' ? 0x4b2a6b : 0x8a5428;
-  const trim = kind === 'arma' ? 0xd62a2a : kind === 'secreto' ? 0xc58cff : 0xd8a838;
+  const trim = kind === 'arma' ? 0xd62a2a : kind === 'secreto' ? 0xc58cff : kind === 'arma-nova' ? 0x2ec8ff : 0xd8a838;
   part(g, rb(0.62, 0.36, 0.42, 0.05), wood, 'lit', 0, 0.18, 0);
   part(g, rb(0.64, 0.05, 0.44, 0.02), trim, 'metal', 0, 0.32, 0);
   part(g, rb(0.05, 0.37, 0.44, 0.02), trim, 'metal', -0.24, 0.185, 0);
@@ -162,7 +162,7 @@ export function chest(kind) {
 }
 
 // Portal entre salas (X) e saída da fase (E)
-export function portal(final = false) {
+export function portal(final = false, back = false) {
   const g = new THREE.Group();
   const stone = 0x77737c;
   part(g, rb(0.26, 1.5, 0.3, 0.06), stone, 'lit', -0.5, 0.75, 0);
@@ -170,7 +170,7 @@ export function portal(final = false) {
   part(g, rb(1.3, 0.28, 0.34, 0.08), stone, 'lit', 0, 1.6, 0);
   part(g, rb(0.3, 0.3, 0.36, 0.08), 0x8a868f, 'lit', 0, 1.82, 0);
   part(g, sphere(0.12, 8, 6), 0x4f8a2e, 'lit', -0.5, 1.5, 0.05, 0, 0, 0, 1.6, 0.5, 1.6);
-  const glowMat = new THREE.MeshBasicMaterial({ color: final ? 0x7dff9a : 0x5ad8ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+  const glowMat = new THREE.MeshBasicMaterial({ color: back ? 0xffb347 : final ? 0x7dff9a : 0x5ad8ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 1.42), glowMat);
   glow.position.set(0, 0.73, 0);
   g.add(glow);
@@ -181,4 +181,64 @@ export function portal(final = false) {
   bars.visible = false;
   bake(g);
   return { group: g, glow, bars };
+}
+
+// Mercador misterioso: capa escura, lanterna e olhos que brilham
+export function merchant() {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  g.add(body);
+  part(body, cone(0.42, 1.0, 8), 0x3a2350, 'lit', 0, 0.5, 0);
+  part(body, cone(0.44, 0.12, 8), 0x2a1838, 'lit', 0, 0.06, 0);
+  part(body, sphere(0.24, 12, 10), 0x2e1c40, 'lit', 0, 1.08, 0);
+  part(body, sphere(0.19, 12, 10), 0x0d0a12, 'lit', 0, 1.06, 0.07);
+  part(body, sphere(0.035, 6, 4), 0xffd23a, 'glow', -0.07, 1.08, 0.24);
+  part(body, sphere(0.035, 6, 4), 0xffd23a, 'glow', 0.07, 1.08, 0.24);
+  part(body, cone(0.12, 0.28, 6), 0x2e1c40, 'lit', 0, 1.32, -0.05, -0.4, 0, 0);
+  part(body, rb(0.6, 0.05, 0.05, 0.02), 0xd8a838, 'metal', 0, 0.75, 0.2);
+  // mochila de armas
+  part(body, rb(0.4, 0.5, 0.25, 0.06), 0x6a4a2c, 'lit', 0, 0.72, -0.3);
+  part(body, cylinder(0.03, 0.03, 0.6, 6), 0x55585e, 'metal', 0.15, 0.95, -0.35, 0.3, 0, 0.2);
+  // lanterna
+  const lamp = pivot(body, 0.36, 0.7, 0.15);
+  part(lamp, cylinder(0.01, 0.01, 0.25, 4), 0x222222, 'lit', 0, 0.1, 0);
+  part(lamp, rb(0.12, 0.16, 0.12, 0.03), 0x55585e, 'metal', 0, -0.06, 0);
+  part(lamp, sphere(0.05, 8, 6), 0x9dff6a, 'glow', 0, -0.06, 0);
+  bake(g);
+  return { group: g, body };
+}
+
+// Bomba (com pavio aceso)
+export function bomb(superBomb = false) {
+  const g = new THREE.Group();
+  part(g, sphere(superBomb ? 0.24 : 0.17, 14, 10), superBomb ? 0x2a3a1a : 0x1a1a1e, 'metal', 0, 0, 0);
+  if (superBomb) for (let i = 0; i < 3; i++) part(g, rb(0.1, 0.02, 0.02, 0.008), 0xfff23a, 'glow', 0, 0.12 - i * 0.12, 0.235);
+  part(g, cylinder(0.05, 0.05, 0.06, 8), 0x55585e, 'metal', 0, superBomb ? 0.25 : 0.18, 0);
+  part(g, cylinder(0.012, 0.012, 0.12, 4), 0x8a6a3a, 'lit', 0.02, superBomb ? 0.32 : 0.25, 0, 0, 0, -0.4);
+  const spark = new THREE.Group();
+  part(spark, sphere(0.04, 6, 4), 0xffe27a, 'glow', 0.05, superBomb ? 0.38 : 0.31, 0);
+  g.add(spark);
+  bake(g);
+  return { group: g, spark };
+}
+
+// Mira em forma de alvo no chão
+export function reticle(color = 0xff3a2a) {
+  const g = new THREE.Group();
+  const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+  for (const [r1, r2] of [[0.62, 0.72], [0.3, 0.38]]) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r1, r2, 32), m);
+    ring.rotation.x = -Math.PI / 2;
+    g.add(ring);
+  }
+  for (const rot of [0, Math.PI / 2]) {
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.06), m);
+    bar.rotation.set(-Math.PI / 2, 0, rot);
+    g.add(bar);
+  }
+  const dot = new THREE.Mesh(new THREE.CircleGeometry(0.08, 12), m);
+  dot.rotation.x = -Math.PI / 2;
+  g.add(dot);
+  g.position.y = 0.04;
+  return { group: g, material: m };
 }

@@ -1,4 +1,5 @@
 // Regras de progresso, estrelas e Forja. Sem Three.js: testado em Node.
+import { newInventory, normalizeInventory } from './inventory.js';
 
 export const SAVE_VERSION = 1;
 
@@ -16,6 +17,7 @@ export function newSave() {
     crystals: 0,
     upgrades: { fogo: 0, rapidez: 0, laser: 0 },
     weapons: 0,           // quantas Booteshiscore o Lunerb já tem (0, 1 ou 2)
+    inventory: newInventory(), // armas extras (bombas, choque, turbina...)
     storySeen: false,
     endingSeen: false,
     sound: true,
@@ -41,6 +43,7 @@ export function normalizeSave(raw) {
     }
   }
   s.stars = stars;
+  s.inventory = normalizeInventory(raw.inventory);
   s.storySeen = !!s.storySeen;
   s.endingSeen = !!s.endingSeen;
   s.sound = s.sound !== false;
@@ -104,4 +107,11 @@ export function weaponStats(save) {
     laserCharge: 0.9 - u.laser * 0.2,
     laserDamage: 4 + u.laser * 2,
   };
+}
+
+// Diamantes ganhos mesmo quando o Lunerb desmaia (ele não perde o que juntou)
+export function keepCrystals(save, n) {
+  const s = normalizeSave(save);
+  s.crystals += Math.max(0, Math.floor(n || 0));
+  return s;
 }

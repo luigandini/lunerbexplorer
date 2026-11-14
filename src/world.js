@@ -226,9 +226,9 @@ export function buildRoom(room, theme, offset, seed) {
     return { lx: h.x + 0.5, lz: h.y + 0.5, taken: false, mesh: g };
   });
 
-  const makeGate = (pt, final) => {
+  const makeGate = (pt, final, back = false) => {
     if (!pt) return null;
-    const o = P.portal(final);
+    const o = P.portal(final, back);
     o.group.position.set(pt.x + 0.5, 0, pt.y + 0.5);
     if (pt.x === 0 || pt.x === W - 1) o.group.rotation.y = Math.PI / 2;
     group.add(o.group);
@@ -236,11 +236,21 @@ export function buildRoom(room, theme, offset, seed) {
   };
   const portal = makeGate(room.portal, false);
   const exit = makeGate(room.exit, true);
+  // portal de volta para a sala anterior (laranja)
+  const back = room.isStart ? null : makeGate(room.entry, false, true);
 
-  if (!room.isStart) part(group, rb(0.8, 0.04, 0.8, 0.02), 0x8a8690, 'lit', room.entry.x + 0.5, 0.02, room.entry.y + 0.5);
+  // lugar do mercador (ele só aparece às vezes)
+  let merchant = null;
+  if (room.merchant) {
+    const o = P.merchant();
+    o.group.position.set(room.merchant.x + 0.5, 0, room.merchant.y + 0.5);
+    o.group.visible = false;
+    group.add(o.group);
+    merchant = { lx: room.merchant.x + 0.5, lz: room.merchant.y + 0.5, ...o, here: false };
+  }
 
   return {
-    group, torches, cracks, checkpoints, chests, hearts, portal, exit,
+    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant,
     center: new THREE.Vector3(offset.x + W / 2, 0, offset.z + H / 2),
   };
 }

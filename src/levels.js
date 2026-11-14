@@ -8,6 +8,7 @@
 //             O  de onde saem os monstros que perseguem
 //   Comum:    L  lava   W  teia   T  tocha   Q  parede rachada (segredo)   C  fogueira azul
 //             B  baú de cristais   G  baú da Booteshiscore   S  baú secreto   H  coração
+//             J  baú com arma nova (bombas, choque...)   V  lugar onde o mercador misterioso pode aparecer
 //             P  início da fase    N  entrada da sala   X  portal para a próxima sala   E  saída da fase
 //             z  zumbi mutante   a  zumbi de armadura   s  aranha   m  morcego de brasa   K  Capitão de Ferro
 
@@ -81,6 +82,7 @@ export const LEVELS = [
   {
     id: 1,
     kind: 'fase',
+    difficulty: 1,
     world: 1,
     title: 'O Despertar',
     theme: 'castle',
@@ -111,12 +113,12 @@ export const LEVELS = [
         'N...........#',
         '#.....###.s.#',
         '#..T..#B..W.X',
-        '#.......z...#',
+        '#.V.....z...#',
         '#############',
       ] },
-      { name: 'Ponte de Lava', map: [
+      { name: 'Ponte de Lava', loot: 'bombas', map: [
         '#############',
-        '#...LLL.....#',
+        '#...LLL....J#',
         '#...LLL..m..#',
         'N...........#',
         '#...LLL..C..#',
@@ -127,7 +129,7 @@ export const LEVELS = [
       ] },
       { name: 'Salão Esquecido', map: [
         '#############',
-        '#..,....T...#',
+        '#V.,....T...#',
         '#.....##..z.#',
         'N.....##....#',
         '#.....s...,.#',
@@ -152,6 +154,7 @@ export const LEVELS = [
   {
     id: 2,
     kind: 'fase',
+    difficulty: 1.15,
     world: 1,
     title: 'Portões de Ferro',
     theme: 'castle',
@@ -182,13 +185,13 @@ export const LEVELS = [
         'N...........#',
         '#..LL...LL..#',
         '#..LL.C.LL.aX',
-        '#.m.........#',
+        '#.m......V..#',
         '#..T....H...#',
         '#############',
       ] },
-      { name: 'Ninho das Aranhas', map: [
+      { name: 'Ninho das Aranhas', loot: 'choque', map: [
         '#############',
-        '#S.#..s.....#',
+        '#S.#..s....J#',
         '#..Q.....W..#',
         '####..WWW...#',
         'N.....W..s..#',
@@ -205,7 +208,7 @@ export const LEVELS = [
         '#.......z...#',
         '#..m....##..#',
         '#.C.....##.zX',
-        '#...,.......#',
+        '#...,.V.....#',
         '#############',
       ] },
       { name: 'Arena do Capitão', map: [
@@ -229,12 +232,12 @@ export const SOLID = new Set(['#', 'T', 'Q', 'Y', 'R', 'U', '~']);
 export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego' };
 export const ROOM_SPACING = 22; // distância entre as maquetes no "espaço"
 
-export function parseRoom(rows, index = 0) {
+export function parseRoom(rows, index = 0, loot = null) {
   const h = rows.length;
   const w = rows[0].length;
   const out = {
     index, w, h, tiles: [], entry: null, isStart: false, portal: null, exit: null,
-    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [],
+    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null,
   };
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -251,6 +254,8 @@ export function parseRoom(rows, index = 0) {
         tile = '.';
       }
       else if (c === 'H') { out.hearts.push({ x, y }); tile = '.'; }
+      else if (c === 'J') { out.chests.push({ kind: 'arma-nova', x, y }); tile = '.'; }
+      else if (c === 'V') { out.merchant = { x, y }; tile = '.'; }
       else if (c === 'C') { out.checkpoints.push({ x, y }); }
       else if (c === 'T') { out.torches.push({ x, y }); }
       else if (c === 'Q') { out.cracks.push({ x, y }); }
@@ -260,11 +265,12 @@ export function parseRoom(rows, index = 0) {
     }
     out.tiles.push(row);
   }
+  for (const c of out.chests) if (c.kind === 'arma-nova') c.loot = loot;
   return out;
 }
 
 export function parseLevel(level) {
-  return { id: level.id, rooms: level.rooms.map((r, i) => parseRoom(r.map, i)) };
+  return { id: level.id, rooms: level.rooms.map((r, i) => parseRoom(r.map, i, r.loot || null)) };
 }
 
 // Busca em largura: até onde o personagem chega andando a partir da entrada da sala.

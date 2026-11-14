@@ -48,6 +48,8 @@ console.log('prólogo', await page.evaluate(() => { const g = window.__lunerb.ga
 await dlg();
 for (let k = 0; k < 3; k++) {
   await dlg(2);
+  await page.evaluate(() => { const g = window.__lunerb.game; const pt = g.room.vis.portal; g.player.x = g.room.off.x + pt.lx - 1.6; g.player.z = g.room.off.z + pt.lz; });
+  await page.waitForFunction(() => window.__lunerb.game.gateArmed, { timeout: 30000 });
   await page.evaluate(() => { const g = window.__lunerb.game; const pt = g.room.vis.portal; g.player.x = g.room.off.x + pt.lx - 0.3; g.player.z = g.room.off.z + pt.lz; });
   await page.waitForFunction((n) => { const g = window.__lunerb.game; return g.room.i === n && !g.trans; }, { timeout: 90000 }, k + 1);
   await wait(400);

@@ -21,6 +21,7 @@
   <div id="hud" class="hidden">
     <div id="hearts"></div>
     <div id="crystals"><span class="gem"></span><b id="crystal-n">0</b></div>
+    <div id="slots" class="hidden"></div>
     <button id="btn-pause" aria-label="Pausar">II</button>
     <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar"><div id="boss-armor"></div><div id="boss-hp"></div></div></div>
   </div>
@@ -90,7 +91,7 @@
       <h2 id="res-title">Fase completa!</h2>
       <div id="res-stars"></div>
       <ul id="res-list"></ul>
-      <p><span class="gem"></span> <b id="res-crystals">0</b> cristais</p>
+      <p><span class="gem"></span> <b id="res-crystals">0</b> diamantes nesta fase</p>
       <button class="big" id="btn-res-ok">Continuar</button>
     </div>
   </section>
@@ -119,6 +120,16 @@
       <p class="small-c">Ideia, história e personagens: Felipe e Lucas<br>Supervisão: Luis Gandini<br>Programação e mentoria: Claude</p>
       <p class="soon">Continua no Mundo 2: Bosque dos Sussurros...</p>
       <button class="big" id="btn-credits-ok">Voltar ao mapa</button>
+    </div>
+  </section>
+
+  <div id="choice" class="hidden"><div class="panel"><h2 id="choice-title"></h2><p id="choice-text"></p><div id="choice-opts"></div></div></div>
+
+  <section id="scr-shop" class="hidden">
+    <div class="shop-panel">
+      <div class="shop-top"><h2>🧙 Mercador Misterioso</h2><div class="gemb"><span class="gem"></span><b id="shop-diamonds">0</b></div><button class="small" id="btn-shop-close">Sair ✖</button></div>
+      <p class="hint">"Psiu... armas boas por alguns diamantes. Mas a mochila só leva 2!"</p>
+      <div class="shop-scroll"><div id="shop-items"></div><div id="shop-ups"></div></div>
     </div>
   </section>
 

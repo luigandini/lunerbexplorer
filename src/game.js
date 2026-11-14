@@ -6,8 +6,10 @@ import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCo
 import { material } from './geo.js';
 import { tex } from './textures.js';
 import { FX } from './fx.js';
-import { sfx, playMusic } from './audio.js';
-import { weaponStats } from './progress.js';
+import { sfx, playMusic, humStart, humStop } from './audio.js';
+import { ITEMS, normalizeInventory, addItem, useAmmo, select, shopPrice, findSlot } from './inventory.js';
+import * as Props from './props.js';
+import { weaponStats, UPGRADES, upgradeCost, buyUpgrade } from './progress.js';
 
 const MAX_HP = 5;
 const P_SPEED = 4.2;
@@ -53,7 +55,7 @@ export class Game {
   }
 
   // ---------------- iniciar fase ----------------
-  start(levelId, save, { testMode = false, onComplete } = {}) {
+  start(levelId, save, { testMode = false, onComplete, onDeath, onPersist } = {}) {
     this.dispose();
     const def = getLevel(levelId);
     this.def = def;
@@ -61,7 +63,11 @@ export class Game {
     this.save = save;
     this.testMode = testMode;
     this.onComplete = onComplete;
+    this.onDeath = onDeath;
+    this.onPersist = onPersist;
     this.stats = weaponStats(save);
+    this.inv = normalizeInventory(save.inventory);
+    this.difficulty = def.difficulty || 1;
     const theme = THEMES[def.theme];
     this.themeCfg = theme;
     this.chaseStarted = false;
@@ -112,6 +118,7 @@ export class Game {
       for (const e of pr.enemies) room.enemies.push(this.makeEnemy(e.type, off.x + e.x + 0.5, off.z + e.y + 0.5, false));
       if (pr.boss) room.boss = this.makeBoss(off.x + pr.boss.x + 0.5, off.z + pr.boss.y + 0.5);
       if (vis.exit) this.setGateLocked(vis.exit, !!room.boss);
+      if (vis.merchant) { vis.merchant.here = testMode || Math.random() < 0.55; vis.merchant.group.visible = vis.merchant.here; }
       return room;
     });
 
@@ -131,7 +138,10 @@ export class Game {
     };
     this.updateGuns();
 
-    this.shots = []; this.pickups = []; this.lasers = [];
+    this.shots = []; this.pickups = []; this.lasers = []; this.bombs = []; this.bolts = []; this.scorches = [];
+    this.aim = null; this.beam = null; this.weaponCd = 0;
+    const ret = Props.reticle(); ret.group.visible = false; scene.add(ret.group); this.reticle = ret;
+    this.boomLight = new THREE.PointLight(0xffa040, 0, 14, 1.2); scene.add(this.boomLight);
     this.result = { finished: false, damageTaken: 0, secretFound: false, crystals: 0 };
     this.time = 0; this.shake = 0;
     this.frozen = true; this.cine = null; this.trans = null; this.ended = false;
@@ -143,6 +153,7 @@ export class Game {
     this.paused = false;
 
     this.ui.setControls({ attack: !this.isPrologue, turbo: !this.isPrologue });
+    this.refreshSlots();
     playMusic(def.music);
     this.ui.titleCard(this.isPrologue ? 'PRÓLOGO' : `MUNDO ${def.world} · FASE ${def.id}`, def.title);
     setTimeout(() => {
@@ -158,6 +169,7 @@ export class Game {
 
   dispose() {
     this.running = false;
+    humStop();
     if (this.scene) {
       this.scene.traverse((o) => {
         if (o.isMesh && Array.isArray(o.material)) o.material.forEach((m) => { if (m.map && m.map.isCanvasTexture && m.map.image.width > 256) m.map.dispose(); });
@@ -175,7 +187,7 @@ export class Game {
     return { x: off.x + e.x + 0.5 + dx, z: off.z + e.y + 0.5 + dz };
   }
 
-  enterRoom(i, first = false) {
+  enterRoom(i, first = false, fromBack = false) {
     const prev = this.room;
     const room = this.rooms[i];
     this.room = room;
@@ -192,6 +204,15 @@ export class Game {
     p.x = room.entry.x; p.z = room.entry.z;
     p.safeX = p.x; p.safeZ = p.z;
     p.face = room.pr.entry.x === 0 ? Math.PI / 2 : 0;
+    if (fromBack && room.pr.portal) {
+      const pt = room.pr.portal;
+      let dx = 0, dz = 0;
+      if (pt.x === room.w - 1) dx = -0.75; else if (pt.x === 0) dx = 0.75; else if (pt.y === 0) dz = 0.75; else dz = -0.75;
+      p.x = room.off.x + pt.x + 0.5 + dx; p.z = room.off.z + pt.y + 0.5 + dz;
+      p.safeX = p.x; p.safeZ = p.z;
+      p.face = Math.atan2(dx, dz);
+    }
+    this.gateArmed = false;
     this.respawn = { x: p.x, z: p.z };
     room.enterT = 0; room.spawnT = 0;
     this.viewTarget = this.fitRoom(room);
@@ -331,9 +352,13 @@ export class Game {
       if (this.room.boss && this.room.boss.alive) this.updateBoss(dt);
       if (this.isPrologue) this.updateSpawners(dt);
       this.updateShots(dt);
+      this.updateBombs(dt);
+      this.updateBolts(dt);
+      this.updateBeam(dt);
       this.updatePickups(dt);
       this.checkTriggers();
     }
+    this.updateScorches(dt);
     this.animate(dt);
     this.fx.update(dt);
     this.updateLights(dt);
@@ -393,6 +418,8 @@ export class Game {
       } else this.ui.toast('Turbo Negro carregando...');
     }
 
+    this.weaponCd = Math.max(0, this.weaponCd - dt);
+    const locked = !!this.beam || !!this.aim;
     let speed = this.isPrologue ? 4.5 : P_SPEED;
     if (this.tileAt(p.x, p.z) === 'W' && p.dash <= 0) speed *= 0.45;
 
@@ -404,6 +431,11 @@ export class Game {
       for (const e of this.targets()) {
         if (!p.dashHit.has(e) && Math.hypot(e.x - p.x, e.z - p.z) < e.r + 0.6) { p.dashHit.add(e); this.damage(e, 3, p.dashDx, p.dashDz); }
       }
+    } else if (locked) {
+      // mirando a bomba ou com a Turbina ligada: o Lunerb fica parado
+      this.move(p, p.kvx * dt, p.kvz * dt, P_R, 'player');
+      if (this.aim && p.moving) { this.aim.dir = turnTo(this.aim.dir, Math.atan2(mx, mz), dt * 6); p.face = this.aim.dir; }
+      p.moving = false;
     } else {
       this.move(p, (mx * speed + p.kvx) * dt, (mz * speed + p.kvz) * dt, P_R, 'player');
       if (p.moving && p.aimT <= 0) p.face = turnTo(p.face, Math.atan2(mx, mz), dt * 14);
@@ -421,6 +453,11 @@ export class Game {
     }
 
     if (this.isPrologue) return; // no prólogo o Lucas só pode fugir
+    const slot = this.inv.slots[this.inv.sel];
+    const item = slot ? slot.id : 'boot';
+    if (item === 'bombas' || item === 'superbomba') { this.handleBombInput(dt, item); return; }
+    if (item === 'choque') { if (inp.attackPressed || (inp.attack && this.weaponCd <= 0)) this.fireChoque(); return; }
+    if (item === 'turbina') { if (inp.attackPressed) this.toggleBeam(); return; }
     if (p.weapons >= 2) {
       if (inp.attackPressed) { this.attack(); p.charging = true; p.charge = 0; }
       if (inp.attack && p.charging) {
@@ -549,14 +586,14 @@ export class Game {
     return SOLID.has(t);
   }
 
-  hurtPlayer(n, kx, kz, ignoreInv = false) {
+  hurtPlayer(n, kx, kz, ignoreInv = false, launch = 7) {
     const p = this.player;
     if (p.dead || p.dash > 0 || this.cine) return;
     if (p.inv > 0 && !ignoreInv) return;
     if (this.testMode && this.ui.invincible) { p.inv = 0.5; return; }
     p.hp -= n;
     p.inv = 1.1;
-    p.kvx = kx * 7; p.kvz = kz * 7;
+    p.kvx = kx * launch; p.kvz = kz * launch;
     this.result.damageTaken += n;
     this.shake = Math.max(this.shake, 0.3);
     sfx('dano');
@@ -568,7 +605,15 @@ export class Game {
     const p = this.player;
     p.dead = true; p.hp = 0;
     this.fx.smoke(p.x, p.z, 1.5);
-    this.ui.bigText(this.isPrologue ? 'Os monstros pegaram o Lucas!' : 'O Lunerb desmaiou...', 1600);
+    this.stopBeam();
+    this.cancelAim();
+    if (!this.isPrologue) {
+      this.ui.bigText('O Lunerb desmaiou... a fase recomeça!', 2200);
+      this.frozen = true;
+      setTimeout(() => { if (this.running && this.onDeath) this.onDeath(this.result, this.inv); }, 2300);
+      return;
+    }
+    this.ui.bigText('Os monstros pegaram o Lucas!', 1600);
     setTimeout(() => {
       if (!this.running) return;
       p.x = this.respawn.x; p.z = this.respawn.z;
@@ -596,8 +641,28 @@ export class Game {
       if (e.awake && (dist > d.aggro * 2.2 || p.dead)) e.awake = false;
     }
     let vx = 0, vz = 0;
+    // bote: o zumbi para, levanta os braços e pula em cima do Lunerb
+    if ((e.type === 'zumbi' || e.type === 'armadura') && !e.chase) {
+      e.lungeCd = Math.max(0, (e.lungeCd || 0) - dt);
+      if (e.lunge) {
+        e.lunge.t += dt;
+        if (e.lunge.t < 0.38) { e.moving = false; e.windup = true; return this.touchCheck(e, dx, dz, dist); }
+        e.windup = false;
+        if (e.lunge.t < 0.62) {
+          this.move(e, e.lunge.dx * 6.5 * dt, e.lunge.dz * 6.5 * dt, e.r, 'enemy');
+          e.moving = true;
+          return this.touchCheck(e, dx, dz, dist);
+        }
+        e.lunge = null;
+        e.lungeCd = 1.8 / this.difficulty;
+      } else if (e.awake && !p.dead && dist < 2.2 && e.lungeCd <= 0) {
+        e.lunge = { t: 0, dx: dx / (dist || 1), dz: dz / (dist || 1) };
+        e.face = Math.atan2(dx, dz);
+        return;
+      }
+    }
     if (e.awake && !p.dead) {
-      let sp = e.speed;
+      let sp = e.speed * (e.chase ? 1 : this.difficulty);
       if (d.hop) sp = (e.t % 0.9) < 0.5 ? e.speed : 0;
       vx = (dx / (dist || 1)) * sp; vz = (dz / (dist || 1)) * sp;
       if (d.fly) { const s = Math.sin(e.t * 3) * 1.5; vx += (-dz / (dist || 1)) * s; vz += (dx / (dist || 1)) * s; }
@@ -611,7 +676,11 @@ export class Game {
     this.move(e, (vx + e.kvx) * dt, (vz + e.kvz) * dt, e.r, d.fly ? 'fly' : 'enemy');
     e.kvx *= Math.pow(0.003, dt); e.kvz *= Math.pow(0.003, dt);
     e.moving = Math.hypot(vx, vz) > 0.1;
-    if (!p.dead && dist < e.r + P_R + 0.05) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1));
+    this.touchCheck(e, dx, dz, dist);
+  }
+
+  touchCheck(e, dx, dz, dist) {
+    if (!this.player.dead && dist < e.r + P_R + 0.05) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1));
   }
 
   // Prólogo: os monstros não param de sair de trás
@@ -876,7 +945,7 @@ export class Game {
       k.g.position.set(k.x, Math.sin(k.t * 4) * 0.08, k.z);
       k.g.rotation.y += dt * 3;
       if (k.t > 0.4 && d < 0.5) {
-        if (k.kind === 'cristal') { this.result.crystals++; sfx('cristal'); } else { p.hp = Math.min(MAX_HP, p.hp + 1); sfx('coracao'); }
+        if (k.kind === 'cristal') { this.addDiamond(); sfx('cristal'); } else { p.hp = Math.min(MAX_HP, p.hp + 1); sfx('coracao'); }
         this.scene.remove(k.g);
         this.pickups.splice(i, 1);
       }
@@ -888,7 +957,9 @@ export class Game {
     if (p.dead) return;
     const room = this.room, ox = room.off.x, oz = room.off.z;
     for (const c of room.vis.chests) {
-      if (c.open || Math.hypot(ox + c.lx - p.x, oz + c.lz - p.z) > 0.95) continue;
+      const dch = Math.hypot(ox + c.lx - p.x, oz + c.lz - p.z);
+      if (c.waitLeave) { if (dch > 1.4) c.waitLeave = false; continue; }
+      if (c.open || dch > 0.95) continue;
       c.open = true;
       sfx('bau');
       this.fx.sparks(ox + c.lx, 0.6, oz + c.lz, 0xffe070, 12);
@@ -898,9 +969,11 @@ export class Game {
         this.frozen = true;
         this.input.reset();
         const lines = p.weapons === 1
-          ? [{ who: 'Lunerb', text: 'Uma BOOTESHISCORE!' }, { who: 'Dica', text: 'Agora o botão vermelho solta BOLAS DE FOGO! Segure para atirar sem parar.' }, { who: 'Dica', text: 'Atire nas tochas apagadas para iluminar o castelo!' }]
+          ? [{ who: 'Lunerb', text: 'Uma BOOTESHISCORE!' }, { who: 'Dica', text: 'Agora o botão vermelho solta BOLAS DE FOGO! Segure para atirar sem parar.' }, { who: 'Dica', text: 'Lá em cima ficam suas armas. Toque num quadradinho para trocar de arma.' }, { who: 'Dica', text: 'Atire nas tochas apagadas para iluminar o castelo!' }]
           : [{ who: 'Lunerb', text: 'A SEGUNDA BOOTESHISCORE! Agora tenho uma em cada mão!' }, { who: 'Dica', text: 'Toque para atirar com as duas. SEGURE e solte para o LASER POTENTE!' }];
         this.ui.dialog(lines, () => { this.frozen = false; });
+      } else if (c.kind === 'arma-nova') {
+        this.giveItem(c.loot, c);
       } else if (c.kind === 'secreto') {
         this.result.secretFound = true;
         for (let i = 0; i < 15; i++) this.dropCrystal(ox + c.lx, oz + c.lz);
@@ -912,16 +985,31 @@ export class Game {
       if (Math.hypot(ox + h.lx - p.x, oz + h.lz - p.z) < 0.6) { h.taken = true; h.mesh.visible = false; p.hp = Math.min(MAX_HP, p.hp + 1); sfx('coracao'); }
     }
     for (const c of room.vis.checkpoints) {
-      if (c.active || Math.hypot(ox + c.lx - p.x, oz + c.lz - p.z) > 0.95) continue;
+      const dc = Math.hypot(ox + c.lx - p.x, oz + c.lz - p.z);
+      if (dc > 1.5) c.ready = true;
+      if (dc > 0.95 || c.ready === false) continue;
+      c.ready = false;
+      const first = !c.active;
       c.active = true; c.flame.visible = true; c.smoke.visible = false;
-      this.respawn = { x: ox + c.lx, z: oz + c.lz + 0.8 };
-      p.hp = MAX_HP;
-      sfx('fogueira');
-      this.ui.toast('🔥 Fogueira acesa! Você volta aqui se desmaiar.');
-      this.fx.sparks(ox + c.lx, 0.5, oz + c.lz, 0x6ab8ff, 14);
+      if (p.hp < MAX_HP || first) {
+        p.hp = MAX_HP;
+        sfx('fogueira');
+        this.ui.toast(first ? '🔥 Fogueira azul: sempre que encostar, recupera toda a vida!' : '🔥 Vida cheia!');
+        this.fx.sparks(ox + c.lx, 0.5, oz + c.lz, 0x6ab8ff, 14);
+      }
     }
-    const portal = room.vis.portal;
-    if (portal && Math.hypot(ox + portal.lx - p.x, oz + portal.lz - p.z) < 0.75) this.startTransition(room.i + 1);
+    const portal = room.vis.portal, backG = room.vis.back;
+    const dPortal = portal ? Math.hypot(ox + portal.lx - p.x, oz + portal.lz - p.z) : 99;
+    const dBack = backG ? Math.hypot(ox + backG.lx - p.x, oz + backG.lz - p.z) : 99;
+    if (!this.gateArmed && dPortal > 1.15 && dBack > 1.15) this.gateArmed = true;
+    if (this.gateArmed && dPortal < 0.75) this.startTransition(room.i + 1);
+    else if (this.gateArmed && dBack < 0.6) this.startTransition(room.i - 1, true);
+    const mer = room.vis.merchant;
+    if (mer && mer.here) {
+      const dm = Math.hypot(ox + mer.lx - p.x, oz + mer.lz - p.z);
+      if (dm > 1.6) mer.armed = true;
+      if (dm < 1.0 && mer.armed !== false) { mer.armed = false; this.openShop(true); }
+    }
     const ex = room.vis.exit;
     if (ex && Math.hypot(ox + ex.lx - p.x, oz + ex.lz - p.z) < 0.75) {
       if (ex.locked) { if (!this.lockMsg) { this.lockMsg = true; this.ui.toast('O portão está trancado! Derrote o Capitão de Ferro.'); setTimeout(() => (this.lockMsg = false), 3000); } }
@@ -944,18 +1032,21 @@ export class Game {
     if (!this.isPrologue && !this.tips.turbo && p.turbo >= 1.5 && this.time > 25) { this.tips.turbo = true; this.ui.toast('Botão roxo: TURBO NEGRO! ⚡ Atravessa os monstros!'); }
   }
 
-  startTransition(next) {
-    if (this.trans || next >= this.rooms.length) return;
+  startTransition(next, back = false) {
+    if (this.trans || next < 0 || next >= this.rooms.length) return;
     sfx('porta');
     this.input.reset();
     const from = this.room;
     const to = this.rooms[next];
     to.vis.group.visible = true;
-    this.trans = { t: 0, from, to, fromView: { ...this.view }, toView: this.fitRoom(to) };
+    this.trans = { t: 0, from, to, back, fromView: { ...this.view }, toView: this.fitRoom(to) };
     this.player.model.root.visible = false;
     for (const s of this.shots) this.scene.remove(s.g);
     this.shots = [];
-    for (const k of this.pickups) { if (k.kind === 'cristal') this.result.crystals++; this.scene.remove(k.g); }
+    for (const k of this.pickups) { if (k.kind === 'cristal') this.addDiamond(); this.scene.remove(k.g); }
+    this.stopBeam();
+    this.cancelAim();
+    if (this.onPersist) this.onPersist();
     this.pickups = [];
   }
 
@@ -968,7 +1059,7 @@ export class Game {
     this.view.half = tr.fromView.half + (tr.toView.half - tr.fromView.half) * k;
     if (tr.t >= 1) {
       this.trans = null;
-      this.enterRoom(tr.to.i);
+      this.enterRoom(tr.to.i, false, tr.back);
       this.view = { ...this.viewTarget };
       this.player.model.root.visible = true;
       this.fx.smoke(this.player.x, this.player.z, 0.6);
@@ -995,11 +1086,401 @@ export class Game {
     this.finish(this.isPrologue);
   }
 
+  // ---------------- diamantes, inventário e loja ----------------
+  addDiamond() { this.save.crystals++; this.result.crystals++; }
+
+  persistInv() {
+    this.save.inventory = this.inv;
+    if (this.onPersist) this.onPersist();
+  }
+
+  refreshSlots() {
+    this.ui.slots(this.isPrologue ? null : { inv: this.inv, weapons: this.player.weapons }, (i) => this.selectSlot(i));
+  }
+
+  selectSlot(i) {
+    if (!this.running || this.isPrologue || this.inv.sel === i) return;
+    this.stopBeam();
+    this.cancelAim();
+    this.inv = select(this.inv, i);
+    sfx('clique');
+    this.refreshSlots();
+    this.persistInv();
+    const s = this.inv.slots[this.inv.sel];
+    if (s) this.ui.toast(`${ITEMS[s.id].icon} ${s.id === 'boot' && this.player.weapons === 0 ? 'Soco e chute' : ITEMS[s.id].name}`, 1200);
+  }
+
+  // achou uma arma num baú
+  giveItem(id, chest) {
+    const it = ITEMS[id];
+    if (!it) return;
+    const r = addItem(this.inv, id);
+    if (r.ok) {
+      this.inv = r.inv;
+      this.refreshSlots();
+      this.persistInv();
+      if (r.refilled) { this.ui.toast(`${it.icon} Mais ${it.name}!`); return; }
+      this.frozen = true;
+      this.input.reset();
+      this.ui.dialog([{ who: 'Lunerb', text: `Uma arma nova: ${it.icon} ${it.name.toUpperCase()}!` }, { who: 'Dica', text: `${it.desc} Toque no quadradinho dela lá em cima para escolher.` }], () => { this.frozen = false; });
+      return;
+    }
+    if (r.reason === 'ja-tem') {
+      for (let i = 0; i < 10; i++) this.dropCrystal(this.room.off.x + chest.lx, this.room.off.z + chest.lz);
+      this.ui.toast(`Você já tem ${it.name}. Ganhou diamantes!`);
+      return;
+    }
+    // mochila cheia: escolher o que largar
+    this.paused = true;
+    this.input.reset();
+    const names = [1, 2].map((i) => `Largar ${ITEMS[this.inv.slots[i].id].icon} ${ITEMS[this.inv.slots[i].id].name}`);
+    this.ui.choice('Mochila cheia!', `Você achou ${it.icon} ${it.name}. Para levar, precisa largar uma arma:`, [...names, 'Deixar no baú'], (k) => {
+      this.paused = false;
+      if (k < 2) {
+        this.inv = addItem(this.inv, id, k + 1).inv;
+        this.refreshSlots();
+        this.persistInv();
+        this.ui.toast(`${it.icon} ${it.name} na mochila!`);
+      } else {
+        chest.open = false; chest.lidT = 0; chest.lid.rotation.x = 0; chest.waitLeave = true;
+      }
+    });
+  }
+
+  openShop() {
+    this.paused = true;
+    this.input.reset();
+    this.stopBeam();
+    this.cancelAim();
+    sfx('mercador');
+    const render = () => {
+      const items = Object.keys(ITEMS).filter((id) => !ITEMS[id].fixed).map((id) => {
+        const slot = findSlot(this.inv, id);
+        return { id, ...ITEMS[id], cost: shopPrice(this.inv, id), have: slot >= 0, ammo: slot >= 0 ? this.inv.slots[slot].ammo : null };
+      });
+      const ups = Object.entries(UPGRADES).map(([key, u]) => ({ key, name: u.name, desc: u.desc, level: this.save.upgrades[key], max: u.costs.length, cost: upgradeCost(this.save, key) }));
+      this.ui.shop({ diamonds: this.save.crystals, items, ups, hasBoot: this.player.weapons > 0 }, {
+        buy: (id) => this.buyItem(id, render),
+        upgrade: (key) => {
+          const cost = upgradeCost(this.save, key);
+          if (cost === null || this.save.crystals < cost) { this.ui.toast('Diamantes insuficientes'); return; }
+          this.save.crystals -= cost;
+          this.save.upgrades[key] += 1;
+          this.stats = weaponStats(this.save);
+          sfx('compra');
+          this.persistInv();
+          render();
+        },
+        close: () => { this.paused = false; this.ui.shop(null); this.hud(true); },
+      });
+    };
+    render();
+  }
+
+  buyItem(id, render) {
+    const price = shopPrice(this.inv, id);
+    if (price === null) return;
+    if (this.save.crystals < price) { this.ui.toast('Diamantes insuficientes'); return; }
+    const done = (inv) => {
+      this.save.crystals -= price;
+      this.inv = inv;
+      sfx('compra');
+      this.refreshSlots();
+      this.persistInv();
+      render();
+    };
+    const r = addItem(this.inv, id);
+    if (r.ok) { done(r.inv); return; }
+    const it = ITEMS[id];
+    const names = [1, 2].map((i) => `Largar ${ITEMS[this.inv.slots[i].id].icon} ${ITEMS[this.inv.slots[i].id].name}`);
+    this.ui.choice('Mochila cheia!', `Para levar ${it.icon} ${it.name}, precisa largar uma arma:`, [...names, 'Cancelar'], (k) => {
+      if (k < 2) done(addItem(this.inv, id, k + 1).inv);
+    });
+  }
+
+  // ---------------- bombas: segura para mirar, solta para jogar ----------------
+  handleBombInput(dt, item) {
+    const inp = this.input;
+    const p = this.player;
+    if (inp.attackPressed && !this.aim && this.weaponCd <= 0) {
+      this.aim = { item, dir: p.face, dist: 1.6, dirn: 1, beep: 0 };
+      this.reticle.group.visible = true;
+      sfx('mira');
+    }
+    const a = this.aim;
+    if (!a) return;
+    a.dist += a.dirn * 4.2 * dt;
+    if (a.dist > 6) { a.dist = 6; a.dirn = -1; }
+    if (a.dist < 1.2) { a.dist = 1.2; a.dirn = 1; }
+    a.beep += dt;
+    if (a.beep > 0.22) { a.beep = 0; sfx('mira'); }
+    const room = this.room;
+    a.tx = THREE.MathUtils.clamp(p.x + Math.sin(a.dir) * a.dist, room.off.x + 0.5, room.off.x + room.w - 0.5);
+    a.tz = THREE.MathUtils.clamp(p.z + Math.cos(a.dir) * a.dist, room.off.z + 0.5, room.off.z + room.h - 0.5);
+    const near = Math.hypot(a.tx - p.x, a.tz - p.z) < (item === 'superbomba' ? 2.6 : 1.7);
+    this.reticle.group.position.set(a.tx, 0.04, a.tz);
+    const s = (item === 'superbomba' ? 1.6 : 1) * (1 + Math.sin(this.time * 12) * 0.08);
+    this.reticle.group.scale.setScalar(s);
+    this.reticle.material.color.setHex(near ? 0xffd23a : 0xff3a2a);
+    this.reticle.group.rotation.y += dt * 2;
+    if (!inp.attack) this.throwBomb();
+  }
+
+  cancelAim() {
+    this.aim = null;
+    if (this.reticle && !this.bombs.length) this.reticle.group.visible = false;
+  }
+
+  throwBomb() {
+    const a = this.aim;
+    this.aim = null;
+    if (!a) return;
+    const u = useAmmo(this.inv, this.inv.sel);
+    if (!u.ok) { this.reticle.group.visible = false; return; }
+    this.inv = u.inv;
+    this.refreshSlots();
+    this.persistInv();
+    const p = this.player;
+    const sup = a.item === 'superbomba';
+    const b = Props.bomb(sup);
+    const sx = p.x + Math.sin(a.dir) * 0.35, sz = p.z + Math.cos(a.dir) * 0.35;
+    b.group.position.set(sx, 1.1, sz);
+    this.scene.add(b.group);
+    const dist = Math.hypot(a.tx - sx, a.tz - sz);
+    this.bombs.push({ ...b, sx, sz, tx: a.tx, tz: a.tz, t: 0, dur: 0.5 + dist * 0.05, sup, h: 1.2 + dist * 0.25 });
+    p.face = a.dir;
+    p.meleeT = 0.22; p.meleeSide = 1;
+    this.weaponCd = 0.5;
+    sfx('lancar');
+  }
+
+  updateBombs(dt) {
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      const b = this.bombs[i];
+      b.t += dt / b.dur;
+      const k = Math.min(1, b.t);
+      const x = b.sx + (b.tx - b.sx) * k, z = b.sz + (b.tz - b.sz) * k;
+      const y = 1.1 * (1 - k) + 0.18 + Math.sin(Math.PI * k) * b.h;
+      b.group.position.set(x, y, z);
+      b.group.rotation.x += dt * 9; b.group.rotation.z += dt * 5;
+      b.spark.visible = Math.random() < 0.7;
+      if (Math.random() < 0.8) this.fx.spawn(x, y + 0.2, z, { color: 0xffd23a, size: 0.06, life: 0.25, emissive: 1.5, vy: 0.5 });
+      if (k >= 1) {
+        this.scene.remove(b.group);
+        this.bombs.splice(i, 1);
+        this.explode(b.sup, b.tx, b.tz);
+        if (!this.bombs.length && !this.aim) this.reticle.group.visible = false;
+      }
+    }
+  }
+
+  explode(sup, x, z) {
+    const p = this.player;
+    const radius = sup ? 99 : 2.3;
+    for (const t of this.targets()) {
+      const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz);
+      if (d > radius + t.r) continue;
+      if (t.type === 'capitao') this.damage(t, sup ? 14 : 6, dx / (d || 1), dz / (d || 1));
+      else if (sup) { t.armor = 0; this.damage(t, 99, dx / (d || 1), dz / (d || 1)); }
+      else { if (t.armor) t.armor = 0; this.damage(t, 7, dx / (d || 1), dz / (d || 1)); }
+    }
+    // explosão quebra parede rachada e acende tocha
+    const room = this.room;
+    for (const c of room.vis.cracks) if (!c.broken && Math.hypot(room.off.x + c.tx + 0.5 - x, room.off.z + c.ty + 0.5 - z) < (sup ? 6 : 2.4)) this.hitTile(room.off.x + c.tx + 0.5, room.off.z + c.ty + 0.5, 9, false);
+    for (const t of room.vis.torches) if (!t.lit && Math.hypot(room.off.x + t.lx - x, room.off.z + t.lz - z) < (sup ? 8 : 2.6)) this.hitTile(room.off.x + t.lx, room.off.z + t.lz, 0, true);
+    // perto demais: o Lunerb também se machuca e sai voando
+    const dp = Math.hypot(p.x - x, p.z - z);
+    if (dp < (sup ? 2.6 : 1.7) && !p.dead) {
+      const nx = (p.x - x) / (dp || 1), nz = (p.z - z) / (dp || 1);
+      p.inv = 0;
+      this.hurtPlayer(2, nx || 1, nz, true, 15);
+      p.airT = 0.6;
+    }
+    // efeitos: clarão, terremoto, fogo, fumaça, onda de choque
+    this.boomLight.position.set(x, 1.6, z);
+    this.boomLight.intensity = sup ? 160 : 70;
+    this.boomLight.distance = sup ? 30 : 12;
+    this.ui.flash(sup ? 'white' : 'orange');
+    this.shake = Math.max(this.shake, sup ? 1.5 : 0.85);
+    const n = sup ? 120 : 50;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = Math.random() * (sup ? 7 : 3.5);
+      const col = [0xffe27a, 0xffa020, 0xff5a10, 0xff2a00][Math.floor(Math.random() * 4)];
+      this.fx.spawn(x + Math.cos(a) * 0.2, 0.3 + Math.random() * 0.4, z + Math.sin(a) * 0.2, {
+        color: col, size: 0.14 + Math.random() * (sup ? 0.35 : 0.22), vx: Math.cos(a) * sp, vy: 2 + Math.random() * (sup ? 6 : 4), vz: Math.sin(a) * sp,
+        life: 0.5 + Math.random() * 0.6, gravity: -1.5, emissive: 1.5,
+      });
+    }
+    for (let i = 0; i < (sup ? 14 : 8); i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.fx.spawn(x, 0.4, z, { color: 0x3a3438, size: 0.1 + Math.random() * 0.12, vx: Math.cos(a) * 4, vy: 4 + Math.random() * 3, vz: Math.sin(a) * 4, life: 1.1, gravity: 12, shrink: false, spin: 10 });
+    }
+    this.fx.smoke(x, z, sup ? 3 : 1.6);
+    this.fx.ring(x, z, sup ? 16 : 2.9, sup ? 0.9 : 0.45, 0xffa040);
+    if (sup) {
+      setTimeout(() => this.fx && this.running && this.fx.ring(x, z, 12, 0.8, 0xffffff), 150);
+      setTimeout(() => this.fx && this.running && this.fx.ring(x, z, 8, 0.7, 0xff5a10), 320);
+    }
+    // marca de queimado no chão
+    const sc = new THREE.Mesh(new THREE.CircleGeometry(sup ? 3.5 : 1.3, 24), new THREE.MeshBasicMaterial({ color: 0x120c08, transparent: true, opacity: 0.7, depthWrite: false }));
+    sc.rotation.x = -Math.PI / 2;
+    sc.position.set(x, 0.03, z);
+    this.scene.add(sc);
+    this.scorches.push({ m: sc, life: 8 });
+    sfx(sup ? 'superboom' : 'boom');
+    if (sup) this.ui.bigText('SUPER BOMBA!', 1400, 'boss');
+  }
+
+  updateScorches(dt) {
+    if (this.boomLight.intensity > 0.1) this.boomLight.intensity *= Math.pow(0.004, dt); else this.boomLight.intensity = 0;
+    for (let i = this.scorches.length - 1; i >= 0; i--) {
+      const s = this.scorches[i];
+      s.life -= dt;
+      s.m.material.opacity = Math.min(0.7, s.life / 4);
+      if (s.life <= 0) { this.scene.remove(s.m); s.m.geometry.dispose(); s.m.material.dispose(); this.scorches.splice(i, 1); }
+    }
+  }
+
+  // ---------------- Arma de Choque: raio que persegue o monstro ----------------
+  fireChoque() {
+    if (this.weaponCd > 0) return;
+    this.weaponCd = 0.8;
+    const p = this.player;
+    const { e } = this.nearestTarget(7.5);
+    if (e) p.face = Math.atan2(e.x - p.x, e.z - p.z);
+    const head = new THREE.Mesh(BALL, material(0xd8f8ff, 'glow'));
+    head.scale.setScalar(0.12);
+    this.scene.add(head);
+    const n = 12;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x7ae8ff }));
+    line.frustumCulled = false;
+    this.scene.add(line);
+    const x = p.x + Math.sin(p.face) * 0.5, z = p.z + Math.cos(p.face) * 0.5;
+    this.bolts.push({ x, z, dir: p.face, target: e, travelled: 0, head, line, trail: Array.from({ length: n }, () => [x, 0.9, z]) });
+    p.aimT = 0.35;
+    sfx('choque');
+  }
+
+  updateBolts(dt) {
+    for (let i = this.bolts.length - 1; i >= 0; i--) {
+      const b = this.bolts[i];
+      if (!b.target || !b.target.alive) {
+        let best = null, bd = 4.5;
+        for (const t of this.targets()) { const d = Math.hypot(t.x - b.x, t.z - b.z); if (d < bd) { bd = d; best = t; } }
+        b.target = best;
+      }
+      if (b.target) b.dir = turnTo(b.dir, Math.atan2(b.target.x - b.x, b.target.z - b.z), dt * 7);
+      const sp = 9;
+      b.x += Math.sin(b.dir) * sp * dt; b.z += Math.cos(b.dir) * sp * dt;
+      b.travelled += sp * dt;
+      b.head.position.set(b.x, 0.9, b.z);
+      b.trail.pop();
+      b.trail.unshift([b.x + (Math.random() - 0.5) * 0.18, 0.9 + (Math.random() - 0.5) * 0.18, b.z + (Math.random() - 0.5) * 0.18]);
+      const pos = b.line.geometry.attributes.position;
+      b.trail.forEach((q, k) => pos.setXYZ(k, q[0], q[1], q[2]));
+      pos.needsUpdate = true;
+      let dead = false;
+      if (SOLID.has(this.tileAt(b.x, b.z)) || b.travelled > 7.5) { dead = true; this.fx.sparks(b.x, 0.9, b.z, 0x7ae8ff, 6); }
+      else for (const t of this.targets()) {
+        if (Math.hypot(t.x - b.x, t.z - b.z) < t.r + 0.2) {
+          this.damage(t, 4, Math.sin(b.dir), Math.cos(b.dir));
+          dead = true;
+          if (!t.alive || t.type === 'capitao') this.thunder(t.x, t.z, !t.alive);
+          else this.fx.sparks(t.x, 0.9, t.z, 0x7ae8ff, 8);
+          break;
+        }
+      }
+      if (dead) { this.scene.remove(b.head); this.scene.remove(b.line); b.line.geometry.dispose(); this.bolts.splice(i, 1); }
+    }
+  }
+
+  thunder(x, z, big) {
+    const g = new THREE.Group();
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.25, 6, 6), material(0xbff4ff, 'glow', 0.8));
+    col.position.y = 3;
+    g.add(col);
+    g.position.set(x, 0, z);
+    this.scene.add(g);
+    this.lasers.push({ g, life: 0.3 });
+    for (let i = 0; i < 12; i++) this.fx.lightning(x, z);
+    this.fx.sparks(x, 0.8, z, 0x7ae8ff, 14);
+    if (big) { sfx('trovao'); this.ui.flash('blue'); this.shake = Math.max(this.shake, 0.3); }
+    this.boomLight.position.set(x, 2, z); this.boomLight.intensity = 40; this.boomLight.color.setHex(0x9fe8ff);
+    setTimeout(() => this.boomLight && this.boomLight.color.setHex(0xffa040), 300);
+  }
+
+  // ---------------- Turbina de Laser: raio gigante e reto ----------------
+  toggleBeam() {
+    if (this.beam) { this.stopBeam(); return; }
+    if (this.weaponCd > 0) { this.ui.toast('Turbina esfriando...', 900); return; }
+    const p = this.player;
+    const face = Math.round(p.face / (Math.PI / 2)) * (Math.PI / 2); // só nas direções retas da sala
+    p.face = face;
+    const fx = Math.round(Math.sin(face)), fz = Math.round(Math.cos(face));
+    const g = new THREE.Group();
+    const outer = new THREE.Mesh(BEAM, material(0xff4a1a, 'glow', 0.75)); g.add(outer);
+    const mid = new THREE.Mesh(BEAM, material(0xffb040, 'glow', 0.85)); g.add(mid);
+    const core = new THREE.Mesh(BEAM, material(0xffffff, 'glow')); g.add(core);
+    g.rotation.y = face;
+    this.scene.add(g);
+    this.beam = { t: 0, fx, fz, tick: 0, g, outer, mid, core };
+    sfx('turbinaOn');
+    humStart();
+  }
+
+  stopBeam() {
+    if (!this.beam) return;
+    this.scene.remove(this.beam.g);
+    this.beam = null;
+    this.weaponCd = 2.0;
+    humStop();
+    sfx('turbinaOff');
+  }
+
+  updateBeam(dt) {
+    const B = this.beam;
+    if (!B) return;
+    const p = this.player;
+    B.t += dt;
+    if (B.t > 5) { this.stopBeam(); this.ui.toast('A Turbina esquentou! Espere um pouquinho.', 1400); return; }
+    let len = 0;
+    const sx = p.x + B.fx * 0.45, sz = p.z + B.fz * 0.45;
+    while (len < 16) {
+      if (SOLID.has(this.tileAt(sx + B.fx * (len + 0.1), sz + B.fz * (len + 0.1)))) break;
+      len += 0.1;
+    }
+    const ex = sx + B.fx * len, ez = sz + B.fz * len;
+    B.g.position.set(sx + B.fx * len / 2, 0.9, sz + B.fz * len / 2);
+    const fl = 1 + Math.sin(this.time * 40) * 0.08;
+    B.outer.scale.set(0.24 * fl, 0.24 * fl, len);
+    B.mid.scale.set(0.15 * fl, 0.15 * fl, len);
+    B.core.scale.set(0.07, 0.07, len);
+    B.tick -= dt;
+    if (B.tick <= 0) {
+      B.tick = 0.12;
+      this.hitTile(ex + B.fx * 0.15, ez + B.fz * 0.15, 1, true);
+      for (const t of this.targets()) {
+        const dx = t.x - sx, dz = t.z - sz;
+        const along = dx * B.fx + dz * B.fz, perp = Math.abs(dx * B.fz - dz * B.fx);
+        if (along > -0.2 && along < len + t.r && perp < 0.32 + t.r) this.damage(t, 1.6, B.fx, B.fz);
+      }
+    }
+    if (Math.random() < 0.8) this.fx.sparks(ex, 0.9, ez, 0xffb040, 2);
+    this.shake = Math.max(this.shake, 0.1);
+    this.boomLight.position.set(sx + B.fx * 1.5, 1.4, sz + B.fz * 1.5);
+    this.boomLight.intensity = Math.max(this.boomLight.intensity, 12);
+  }
+
   // ---------------- visual ----------------
   animate(dt) {
     const p = this.player;
     const m = p.model;
-    m.root.position.set(p.x, -p.sink, p.z);
+    p.airT = Math.max(0, (p.airT || 0) - dt);
+    const hop = p.airT > 0 ? Math.sin(Math.PI * (1 - p.airT / 0.6)) * 0.9 : 0;
+    m.root.position.set(p.x, hop - p.sink, p.z);
+    if (p.airT > 0) m.root.rotation.x = -(1 - p.airT / 0.6) * 6.28; else m.root.rotation.x = 0;
     m.root.rotation.y = p.face;
     if (!this.trans) m.root.visible = !p.dead && !(p.inv > 0 && Math.floor(this.time * 14) % 2 === 0);
     p.blob.position.set(p.x, 0.02, p.z);
@@ -1008,7 +1489,8 @@ export class Game {
     const sw = walking ? Math.sin(p.walkT) * 0.8 : 0;
     m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw;
     m.body.position.y = walking ? Math.abs(Math.sin(p.walkT)) * 0.035 : Math.sin(this.time * 2) * 0.008;
-    const aiming = p.aimT > 0 || p.charging;
+    if (this.beam) p.aimT = 0.2;
+    const aiming = p.aimT > 0 || p.charging || !!this.aim;
     m.arms[0].rotation.x = aiming && p.weapons >= 2 ? -1.45 : -sw;
     m.arms[1].rotation.x = aiming && p.weapons >= 1 ? -1.45 : sw;
     if (p.meleeT > 0) {
@@ -1024,7 +1506,7 @@ export class Game {
       r.rotation.y = e.face;
       r.scale.setScalar(HERO_SCALE * (e.hit > 0 ? 1.15 : 1));
       const w = Math.sin(this.time * (e.chase ? 12 : 8) + e.x) * (e.moving ? 0.6 : 0.1);
-      if (e.type === 'zumbi' || e.type === 'armadura') { e.m.legs[0].rotation.x = w; e.m.legs[1].rotation.x = -w; e.m.arms.forEach((a, i) => (a.rotation.x = -1.3 + Math.sin(this.time * 4 + i) * 0.15)); }
+      if (e.type === 'zumbi' || e.type === 'armadura') { e.m.legs[0].rotation.x = w; e.m.legs[1].rotation.x = -w; e.m.arms.forEach((a, i) => (a.rotation.x = e.windup ? -2.7 : -1.3 + Math.sin(this.time * 4 + i) * 0.15)); }
       if (e.type === 'aranha') e.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 18 + i) * (e.moving ? 0.35 : 0.05)));
       if (e.type === 'morcego') e.m.wings.forEach((wg, i) => (wg.rotation.z = Math.sin(this.time * 16) * 0.7 * (i ? -1 : 1)));
     }
@@ -1092,10 +1574,10 @@ export class Game {
 
   hud(force) {
     const p = this.player;
-    const st = `${p.hp}|${this.result.crystals}|${Math.floor(p.turbo * 10)}`;
+    const st = `${p.hp}|${this.save.crystals}|${Math.floor(p.turbo * 10)}`;
     if (!force && st === this._hud) return;
     this._hud = st;
-    this.ui.hud({ hp: p.hp, maxHp: MAX_HP, crystals: this.result.crystals, turbo: p.turbo, showCrystals: !this.isPrologue });
+    this.ui.hud({ hp: p.hp, maxHp: MAX_HP, crystals: this.save.crystals, turbo: p.turbo, showCrystals: !this.isPrologue });
   }
 }
 

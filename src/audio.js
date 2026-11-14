@@ -75,6 +75,16 @@ const SFX = {
   pancada: (t) => { noise(t, 0.5, 0.4, sfxGain, 100); tone(60, t, 0.5, 'square', 0.2, sfxGain, 30); },
   rugido: (t) => { tone(110, t, 0.8, 'sawtooth', 0.18, sfxGain, 70); tone(116, t, 0.8, 'square', 0.1, sfxGain, 72); },
   clique: (t) => { tone(880, t, 0.05, 'square', 0.08); },
+  boom: (t) => { noise(t, 1.0, 0.6, sfxGain, 60); tone(70, t, 0.9, 'sawtooth', 0.3, sfxGain, 25); tone(140, t, 0.4, 'square', 0.15, sfxGain, 40); },
+  superboom: (t) => { noise(t, 2.0, 0.7, sfxGain, 40); tone(50, t, 1.8, 'sawtooth', 0.35, sfxGain, 18); tone(100, t + 0.15, 1.4, 'square', 0.2, sfxGain, 25); noise(t + 0.3, 1.2, 0.4, sfxGain, 200); },
+  lancar: (t) => { tone(300, t, 0.25, 'triangle', 0.1, sfxGain, 700); noise(t, 0.2, 0.08, sfxGain, 2500); },
+  mira: (t) => { tone(1200, t, 0.03, 'square', 0.04); },
+  choque: (t) => { for (let i = 0; i < 5; i++) tone(800 + Math.random() * 1600, t + i * 0.03, 0.05, 'square', 0.06); noise(t, 0.2, 0.15, sfxGain, 3000); },
+  trovao: (t) => { noise(t, 0.9, 0.5, sfxGain, 80); tone(90, t, 0.8, 'sawtooth', 0.2, sfxGain, 35); noise(t + 0.05, 0.15, 0.4, sfxGain, 4000); },
+  turbinaOn: (t) => { tone(80, t, 0.5, 'sawtooth', 0.2, sfxGain, 400); noise(t, 0.4, 0.2, sfxGain, 1500); },
+  turbinaOff: (t) => { tone(400, t, 0.4, 'sawtooth', 0.15, sfxGain, 60); },
+  mercador: (t) => { [659, 784, 988, 1319].forEach((f, i) => tone(f, t + i * 0.1, 0.4, 'triangle', 0.1)); },
+  compra: (t) => { [523, 784, 1047, 1568].forEach((f, i) => tone(f, t + i * 0.06, 0.15, 'square', 0.09)); },
   porta: (t) => { tone(150, t, 0.6, 'square', 0.12, sfxGain, 300); noise(t, 0.6, 0.12, sfxGain, 400); },
 };
 
@@ -166,4 +176,22 @@ function schedule(th) {
     nextTime += stepDur;
     step++;
   }
+}
+
+// zumbido contínuo da Turbina de Laser
+let hum = null;
+export function humStart() {
+  if (!ctx || !enabled || hum) return;
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain();
+  o1.type = 'sawtooth'; o1.frequency.value = 110;
+  o2.type = 'square'; o2.frequency.value = 113;
+  g.gain.value = 0.07;
+  o1.connect(g); o2.connect(g); g.connect(sfxGain);
+  o1.start(); o2.start();
+  hum = { o1, o2, g };
+}
+export function humStop() {
+  if (!hum) return;
+  const h = hum; hum = null;
+  try { h.g.gain.setTargetAtTime(0, ctx.currentTime, 0.05); h.o1.stop(ctx.currentTime + 0.3); h.o2.stop(ctx.currentTime + 0.3); } catch { /* ok */ }
 }

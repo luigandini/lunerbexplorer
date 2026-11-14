@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS, SOLID } from '../src/levels.js';
 
-const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~O'.split(''));
+const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJV'.split(''));
 
 test('o jogo tem 8 fases planejadas em 4 mundos, mais o prólogo', () => {
   assert.equal(TOTAL_PHASES, 8);
@@ -78,6 +78,13 @@ for (const L of LEVELS) {
       assert.ok(reachable(sec[0].r, { openCracks: true }).has(sec[0].x, sec[0].y), 'o secreto abre quebrando a parede');
       assert.equal(L.weaponReward, L.id);
       assert.ok(L.intro.length);
+      const loot = chests.filter((c) => c.kind === 'arma-nova');
+      assert.ok(loot.length >= 1, 'cada fase tem pelo menos 1 arma nova para achar');
+      for (const c of loot) assert.ok(c.loot, 'o baú de arma nova precisa dizer qual arma');
+      const spots = P.rooms.filter((r) => r.merchant);
+      assert.ok(spots.length >= 1, 'precisa de lugar para o mercador');
+      for (const r of spots) assert.ok(reachable(r).has(r.merchant.x, r.merchant.y), 'mercador inalcançável');
+      assert.ok(L.difficulty >= 1);
     });
   }
 }
@@ -87,6 +94,11 @@ test('a Fase 2 termina na arena do Capitão de Ferro', () => {
   const last = P.rooms[P.rooms.length - 1];
   assert.ok(last.boss);
   assert.ok(reachable(last).has(last.boss.x, last.boss.y));
+});
+
+test('a dificuldade aumenta de fase em fase', () => {
+  const f = LEVELS.filter((l) => l.kind === 'fase');
+  for (let i = 1; i < f.length; i++) assert.ok(f[i].difficulty > f[i - 1].difficulty);
 });
 
 test('a lava e o lago contam como obstáculo', () => {

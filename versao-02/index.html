@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#07060b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Lunerb (versão 02)</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="vignette" class="hidden"></div>
+
+  <!-- HUD do jogo -->
+  <div id="hud" class="hidden">
+    <div id="hearts"></div>
+    <div id="crystals"><span class="gem"></span><b id="crystal-n">0</b></div>
+    <button id="btn-pause" aria-label="Pausar">II</button>
+    <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar"><div id="boss-armor"></div><div id="boss-hp"></div></div></div>
+  </div>
+
+  <!-- controles -->
+  <div id="controls" class="hidden">
+    <div id="stick-zone"></div>
+    <div id="stick"><div id="stick-knob"></div></div>
+    <button id="btn-turbo" class="btn-round"><span>⚡</span><small>TURBO</small><i id="turbo-pips"></i></button>
+    <button id="btn-attack" class="btn-round"><span>✊</span><small>ATACAR</small></button>
+    <button id="btn-special" class="btn-round hidden"><span>★</span><small>ESPECIAL</small></button>
+  </div>
+
+  <div id="toast"></div>
+  <div id="titlecard"><small id="tc-sub"></small><b id="tc-title"></b></div>
+  <div id="bigtext"></div>
+  <div id="flash"></div>
+  <div id="fade"></div>
+
+  <div id="dialog" class="hidden">
+    <div class="box"><b id="dlg-who"></b><p id="dlg-text"></p><span class="next">toque ▶</span></div>
+  </div>
+
+  <!-- tela inicial -->
+  <section id="scr-title" class="screen">
+    <div class="title-wrap">
+      <h1 id="logo">LUNERB</h1>
+      <p class="sub">Mundo 1 · Fortaleza de Cinzarocha</p>
+      <button class="big" id="btn-play">JOGAR</button>
+      <p class="credits">Um jogo de Felipe Gandini e Lucas Gandini</p>
+      <div id="test-badge" class="hidden">MODO TESTE</div>
+    </div>
+    <button class="corner" id="btn-sound-title">🔊</button>
+  </section>
+
+  <!-- mapa das fases -->
+  <section id="scr-map" class="screen hidden">
+    <div class="map-top">
+      <button class="small" id="btn-map-back">◀ Início</button>
+      <h2>Caminho para casa</h2>
+      <button class="small gemb" id="btn-forge">Forja <span class="gem"></span><b id="map-crystals">0</b></button>
+    </div>
+    <div id="worlds"></div>
+  </section>
+
+  <!-- forja -->
+  <section id="scr-forge" class="screen hidden">
+    <div class="map-top">
+      <button class="small" id="btn-forge-back">◀ Mapa</button>
+      <h2>Forja das Booteshiscore</h2>
+      <div class="gemb"><span class="gem"></span><b id="forge-crystals">0</b></div>
+    </div>
+    <div id="forge-list"></div>
+    <p class="hint" id="forge-hint"></p>
+    <button class="small hidden" id="btn-test-gems">+100 cristais (teste)</button>
+  </section>
+
+  <!-- história (cenas) -->
+  <section id="scr-story" class="screen hidden">
+    <div class="story-box"><p id="story-text"></p><span class="next">toque ▶</span></div>
+    <button class="corner" id="btn-skip">Pular ⏭</button>
+  </section>
+
+  <!-- resultado da fase -->
+  <section id="scr-result" class="screen hidden">
+    <div class="panel">
+      <h2 id="res-title">Fase completa!</h2>
+      <div id="res-stars"></div>
+      <ul id="res-list"></ul>
+      <p><span class="gem"></span> <b id="res-crystals">0</b> cristais</p>
+      <button class="big" id="btn-res-ok">Continuar</button>
+    </div>
+  </section>
+
+  <!-- pausa -->
+  <section id="scr-pause" class="screen hidden">
+    <div class="panel">
+      <h2>Pausa</h2>
+      <button class="big" id="btn-resume">Continuar</button>
+      <button class="small" id="btn-sound">🔊 Som: ligado</button>
+      <button class="small" id="btn-quit">Sair para o mapa</button>
+      <div id="test-tools" class="hidden">
+        <button class="small" id="btn-invincible">Invencível: não</button>
+        <button class="small" id="btn-skip-level">Pular fase</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- créditos -->
+  <section id="scr-credits" class="screen hidden">
+    <div class="credits-roll">
+      <h2>LUNERB</h2>
+      <p>Um jogo de</p>
+      <h3>Felipe Gandini</h3>
+      <h3>Lucas Gandini</h3>
+      <p class="small-c">Ideia, história e personagens: Felipe e Lucas<br>Supervisão: Luis Gandini<br>Programação e mentoria: Claude</p>
+      <p class="soon">Continua no Mundo 2: Bosque dos Sussurros...</p>
+      <button class="big" id="btn-credits-ok">Voltar ao mapa</button>
+    </div>
+  </section>
+
+  <div id="rotate"><div>📱↻<p>Gire o celular para jogar deitado</p></div></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

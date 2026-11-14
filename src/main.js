@@ -201,7 +201,7 @@ function showForge() {
     d.appendChild(btn);
     list.appendChild(d);
   }
-  $('forge-hint').textContent = save.weapons < 1 ? 'Primeiro encontre uma Booteshiscore na Fase 1!' : 'Derrote monstros e abra baús para juntar cristais.';
+  $('forge-hint').textContent = save.weapons < 1 ? 'Primeiro encontre uma Booteshiscore na Fase 1!' : 'Derrote monstros e abra baús para juntar diamantes. O Mercador Misterioso vende armas novas!';
   $('btn-test-gems').classList.toggle('hidden', !testMode);
 }
 
@@ -236,7 +236,13 @@ function startLevel(id) {
     ui.gameMode(true);
     mode = 'game';
     input.reset();
-    game.start(id, save, { testMode, onComplete: (res) => levelDone(id, res) });
+    game.start(id, save, {
+      testMode,
+      onComplete: (res) => levelDone(id, res),
+      onPersist: () => { save = game.save; writeSave(save); },
+      // o Lunerb desmaiou: a fase recomeça da primeira sala (diamantes e armas ficam)
+      onDeath: () => { save = game.save; writeSave(save); game.running = false; startLevel(id); },
+    });
     ui.fade(false);
   }, 380);
 }
@@ -244,7 +250,8 @@ function startLevel(id) {
 function levelDone(id, res) {
   const def = getLevel(id);
   const firstClearW1 = id === 2 && !save.endingSeen;
-  save = applyLevelResult(save, id, res, { weaponReward: def.weaponReward, totalLevels: TOTAL_PHASES });
+  // os diamantes já foram guardados um a um durante a fase
+  save = applyLevelResult(game.save, id, { ...res, crystals: 0 }, { weaponReward: def.weaponReward, totalLevels: TOTAL_PHASES });
   save.unlocked = Math.min(save.unlocked, Math.max(...LEVELS.map((l) => l.id)));
   writeSave(save);
   game.running = false;
