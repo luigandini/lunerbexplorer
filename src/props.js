@@ -120,8 +120,13 @@ export function torch() {
   part(flame, cone(0.07, 0.22, 7), 0xffd23a, 'glow', 0, 1.24, 0);
   g.add(flame);
   part(g, cylinder(0.11, 0.11, 0.03, 8), 0x5a2a10, 'lit', 0, 1.1, 0);
+  // tocha apagada: carvão com brasinha (mostra que dá para acender)
+  const ember = new THREE.Group();
+  for (let i = 0; i < 4; i++) part(ember, new THREE.DodecahedronGeometry(0.045, 0), 0x2a2220, 'lit', Math.cos(i * 1.6) * 0.06, 1.13, Math.sin(i * 1.6) * 0.06, i, i, 0);
+  part(ember, sphere(0.03, 6, 4), 0xff5a10, 'glow', 0, 1.14, 0);
+  g.add(ember);
   bake(g);
-  return { group: g, flame };
+  return { group: g, flame, ember };
 }
 
 export function campfire() {

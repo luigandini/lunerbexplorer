@@ -89,6 +89,25 @@ for (const L of LEVELS) {
   }
 }
 
+test('nenhuma tocha ou obstáculo tapando passagem, porta ou portal', () => {
+  for (const L of LEVELS) {
+    parseLevel(L).rooms.forEach((r, i) => {
+      const t = (x, y) => (r.tiles[y] || [])[x];
+      for (const o of r.torches) {
+        const horiz = t(o.x - 1, o.y) === '#' && t(o.x + 1, o.y) === '#';
+        const vert = t(o.x, o.y - 1) === '#' && t(o.x, o.y + 1) === '#';
+        assert.ok(!horiz && !vert, `${L.title}, sala ${i + 1}: tocha tapando passagem em ${o.x},${o.y}`);
+      }
+      for (const g of [r.entry, r.portal, r.exit].filter(Boolean)) {
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const n = t(g.x + dx, g.y + dy);
+          assert.ok(n !== 'T', `${L.title}, sala ${i + 1}: tocha colada na porta ${g.x},${g.y}`);
+        }
+      }
+    });
+  }
+});
+
 test('a Fase 2 termina na arena do Capitão de Ferro', () => {
   const P = parseLevel(LEVELS.find((l) => l.id === 2));
   const last = P.rooms[P.rooms.length - 1];

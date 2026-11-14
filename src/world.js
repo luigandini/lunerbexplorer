@@ -129,9 +129,9 @@ export function buildRoom(room, theme, offset, seed) {
       if (t === '#') {
         const front = y === H - 1 || x === W - 1;
         const col = new THREE.Color(0xc2bcc6).multiplyScalar(0.8 + r() * 0.28).getHex();
-        if (front) lows.push({ x: cx, y: 0.21, z: cz, color: col });
-        else walls.push({ x: cx, y: 0.55, z: cz, color: col });
-        if (r() < 0.45) caps.push({ x: cx, y: front ? 0.45 : 1.13, z: cz, sx: 0.9 + r() * 0.15, sz: 0.9 + r() * 0.15, color: MOSS[Math.floor(r() * 3)] });
+        if (front) lows.push({ x: cx, y: 0.21, z: cz, color: col, tx: x, ty: y });
+        else walls.push({ x: cx, y: 0.55, z: cz, color: col, tx: x, ty: y });
+        if (r() < 0.45) caps.push({ x: cx, y: front ? 0.45 : 1.13, z: cz, sx: 0.9 + r() * 0.15, sz: 0.9 + r() * 0.15, color: MOSS[Math.floor(r() * 3)], tx: x, ty: y });
       } else if (t === 'L') lavaTiles.push({ x: cx, y: 0.01, z: cz, color: r() < 0.3 ? 0xffb030 : 0xff5a10 });
       else if (t === '~') { lodoTiles.push({ x: cx, y: 0.02, z: cz, color: 0xffffff }); if (r() < 0.45) bubbles.push({ x: cx + (r() - 0.5) * 0.6, y: 0.07, z: cz + (r() - 0.5) * 0.6, sx: 0.08 + r() * 0.1, sy: 0.05, sz: 0.08 + r() * 0.1, color: 0x8dff6a }); }
       else if (t === 'Y') P.tree(statics, cx, cz, r);
@@ -157,9 +157,25 @@ export function buildRoom(room, theme, offset, seed) {
       }
     }
   }
-  if (walls.length) group.add(instanced(S.wallGeo, S.wall, walls));
-  if (lows.length) group.add(instanced(S.lowWallGeo, S.wall, lows));
-  if (caps.length) group.add(instanced(S.capGeo, S.moss, caps, { receive: false }));
+  // guarda onde está cada bloco de parede, para a bomba poder quebrar
+  const wallIndex = new Map();
+  const addWalls = (geo, mat, list, opts) => {
+    if (!list.length) return;
+    const mesh = instanced(geo, mat, list, opts);
+    list.forEach((it, i) => { const k = `${it.tx},${it.ty}`; if (!wallIndex.has(k)) wallIndex.set(k, []); wallIndex.get(k).push({ mesh, i }); });
+    group.add(mesh);
+  };
+  addWalls(S.wallGeo, S.wall, walls);
+  addWalls(S.lowWallGeo, S.wall, lows);
+  addWalls(S.capGeo, S.moss, caps, { receive: false });
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const breakWall = (x, y) => {
+    const list = wallIndex.get(`${x},${y}`);
+    if (!list) return false;
+    for (const { mesh, i } of list) { mesh.setMatrixAt(i, zero); mesh.instanceMatrix.needsUpdate = true; }
+    wallIndex.delete(`${x},${y}`);
+    return true;
+  };
   if (lavaTiles.length) group.add(instanced(S.tileGeo, S.lava, lavaTiles, { cast: false, receive: false }));
   if (lodoTiles.length) {
     group.add(instanced(S.tileGeo, S.lodo, lodoTiles, { cast: false, receive: false }));
@@ -187,7 +203,8 @@ export function buildRoom(room, theme, offset, seed) {
     group.add(o.group);
     const lit = i % 2 === 0;
     o.flame.visible = lit;
-    return { lx: t.x + 0.5, lz: t.y + 0.5, tx: t.x, ty: t.y, lit, flame: o.flame, group: o.group };
+    o.ember.visible = !lit;
+    return { lx: t.x + 0.5, lz: t.y + 0.5, tx: t.x, ty: t.y, lit, flame: o.flame, ember: o.ember, group: o.group };
   });
 
   // paredes rachadas
@@ -250,7 +267,7 @@ export function buildRoom(room, theme, offset, seed) {
   }
 
   return {
-    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant,
+    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall,
     center: new THREE.Vector3(offset.x + W / 2, 0, offset.z + H / 2),
   };
 }

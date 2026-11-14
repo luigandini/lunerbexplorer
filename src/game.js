@@ -139,7 +139,7 @@ export class Game {
     this.updateGuns();
 
     this.shots = []; this.pickups = []; this.lasers = []; this.bombs = []; this.bolts = []; this.scorches = [];
-    this.aim = null; this.beam = null; this.weaponCd = 0;
+    this.aim = null; this.beam = null; this.weaponCd = 0; this.arenaItem = null;
     const ret = Props.reticle(); ret.group.visible = false; scene.add(ret.group); this.reticle = ret;
     this.boomLight = new THREE.PointLight(0xffa040, 0, 14, 1.2); scene.add(this.boomLight);
     this.result = { finished: false, damageTaken: 0, secretFound: false, crystals: 0 };
@@ -156,8 +156,9 @@ export class Game {
     this.refreshSlots();
     playMusic(def.music);
     this.ui.titleCard(this.isPrologue ? 'PRÓLOGO' : `MUNDO ${def.world} · FASE ${def.id}`, def.title);
+    const token = this.startToken = (this.startToken || 0) + 1;
     setTimeout(() => {
-      if (!this.running) return;
+      if (!this.running || token !== this.startToken) return;
       this.ui.dialog(def.intro, () => {
         this.frozen = false;
         if (this.isPrologue) this.ui.toast('Arraste no lado esquerdo para andar');
@@ -215,6 +216,7 @@ export class Game {
     this.gateArmed = false;
     this.respawn = { x: p.x, z: p.z };
     room.enterT = 0; room.spawnT = 0;
+    if (room.boss && room.boss.alive && !first) { p.turbo = 3; p.hp = Math.max(p.hp, 3); this.ui.toast('⚡ Turbo Negro carregado! Corra!', 1800); }
     this.viewTarget = this.fitRoom(room);
     const c = room.vis.center;
     this.sun.position.set(c.x - 6, 14, c.z + 5);
@@ -271,7 +273,7 @@ export class Game {
     this.scene.add(m.root);
     m.root.position.set(x, 0, z);
     return {
-      type: 'capitao', x, z, hx: x, hz: z, hp: 22, maxHp: 22, armor: 18, maxArmor: 18, m, alive: true,
+      type: 'capitao', x, z, hx: x, hz: z, hp: 32, maxHp: 32, armor: 26, maxArmor: 26, m, alive: true,
       state: 'dormindo', t: 0, cycle: 0, r: 0.8, kvx: 0, kvz: 0, face: -Math.PI / 2, hit: 0, chargeDx: 0, chargeDz: 0,
       spawnT: 0, hordeDone: false, ring: null,
     };
@@ -421,6 +423,7 @@ export class Game {
     this.weaponCd = Math.max(0, this.weaponCd - dt);
     const locked = !!this.beam || !!this.aim;
     let speed = this.isPrologue ? 4.5 : P_SPEED;
+    if (this.room.boss && this.room.boss.alive) speed *= 1.2; // na arena o Lunerb corre mais para fugir
     if (this.tileAt(p.x, p.z) === 'W' && p.dash <= 0) speed *= 0.45;
 
     if (p.dash > 0) {
@@ -434,7 +437,6 @@ export class Game {
     } else if (locked) {
       // mirando a bomba ou com a Turbina ligada: o Lunerb fica parado
       this.move(p, p.kvx * dt, p.kvz * dt, P_R, 'player');
-      if (this.aim && p.moving) { this.aim.dir = turnTo(this.aim.dir, Math.atan2(mx, mz), dt * 6); p.face = this.aim.dir; }
       p.moving = false;
     } else {
       this.move(p, (mx * speed + p.kvx) * dt, (mz * speed + p.kvz) * dt, P_R, 'player');
@@ -560,10 +562,16 @@ export class Game {
     if (t === 'T' && fromFire) {
       const torch = r.vis.torches.find((o) => o.tx === tx && o.ty === tz);
       if (torch && !torch.lit) {
-        torch.lit = true; torch.flame.visible = true;
+        torch.lit = true; torch.flame.visible = true; if (torch.ember) torch.ember.visible = false;
         sfx('tocha');
         this.fx.sparks(r.off.x + torch.lx, 1.2, r.off.z + torch.lz, 0xff9a30, 10);
         this.lightTimer = 0;
+        // acendeu todas as tochas da sala: chuva de diamantes
+        if (!r.torchReward && r.vis.torches.length >= 2 && r.vis.torches.every((o) => o.lit)) {
+          r.torchReward = true;
+          for (let i = 0; i < 6; i++) this.dropCrystal(r.off.x + torch.lx, r.off.z + torch.lz);
+          this.ui.toast('✨ Sala toda iluminada! Ganhou diamantes!');
+        }
       }
       return true;
     }
@@ -776,51 +784,76 @@ export class Game {
       return;
     }
     if (p.dead) return;
-    const speed = broken ? 2.0 : 1.35;
+    const speed = (broken ? 2.75 : 1.9) * this.difficulty;
     switch (b.state) {
       case 'perseguir':
         b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 5);
         this.move(b, (dx / (dist || 1)) * speed * dt, (dz / (dist || 1)) * speed * dt, b.r, 'enemy');
         b.moving = true;
-        if (b.t > (broken ? 2.2 : 3)) {
+        if (b.t > (broken ? 1.1 : 1.7)) {
           b.t = 0; b.cycle++;
-          b.state = b.cycle % 3 === 0 ? 'mirar' : 'erguer';
+          const k = b.cycle % 3;
+          b.state = k === 0 ? 'mirar' : k === 1 ? 'agachar' : 'erguer';
+          if (broken && k === 2 && Math.random() < 0.5) b.state = 'agachar';
           b.moving = false;
-          if (b.state === 'erguer') sfx('rugido');
+          if (b.state !== 'mirar') sfx('rugido');
         }
         break;
+      case 'agachar': // prepara o BOTE
+        b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 10);
+        if (b.t > (broken ? 0.32 : 0.45)) {
+          b.state = 'bote'; b.t = 0;
+          const lead = 0.25; // pula para onde o Lunerb vai estar
+          const tx = p.x + (p.moving ? Math.sin(p.face) * P_SPEED * lead : 0), tz = p.z + (p.moving ? Math.cos(p.face) * P_SPEED * lead : 0);
+          const ld = Math.hypot(tx - b.x, tz - b.z) || 1;
+          b.chargeDx = (tx - b.x) / ld; b.chargeDz = (tz - b.z) / ld;
+          this.shake = Math.max(this.shake, 0.25);
+        }
+        break;
+      case 'bote': {
+        this.move(b, b.chargeDx * 10 * dt, b.chargeDz * 10 * dt, b.r, 'enemy');
+        b.moving = true;
+        if (b.t > 0.38) {
+          b.state = 'perseguir'; b.t = 0;
+          sfx('pancada'); this.shake = Math.max(this.shake, 0.4);
+          this.fx.ring(b.x, b.z, 2.2, 0.35, 0xcfd6dd);
+          if (dist < 2.4) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1), false, 12);
+        }
+        break;
+      }
       case 'erguer':
-        if (b.t > 0.75) { b.state = 'pancada'; b.t = 0; sfx('pancada'); this.shake = 0.45; b.ring = this.fx.ring(b.x, b.z, 5, 0.7); }
+        if (b.t > (broken ? 0.5 : 0.65)) { b.state = 'pancada'; b.t = 0; sfx('pancada'); this.shake = 0.5; b.ring = this.fx.ring(b.x, b.z, 6, 0.75); }
         break;
       case 'pancada':
         if (b.ring && Math.abs(dist - b.ring.r) < 0.45 && b.ring.t < b.ring.dur) this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1));
-        if (b.t > 1.1) { b.state = 'perseguir'; b.t = 0; b.ring = null; }
+        if (b.t > 0.85) { b.state = 'perseguir'; b.t = 0; b.ring = null; }
         break;
       case 'mirar':
         b.face = turnTo(b.face, Math.atan2(dx, dz), dt * 6);
-        if (b.t > 0.7) { b.state = 'investida'; b.t = 0; b.chargeDx = dx / (dist || 1); b.chargeDz = dz / (dist || 1); sfx('rugido'); }
+        if (b.t > 0.5) { b.state = 'investida'; b.t = 0; b.chargeDx = dx / (dist || 1); b.chargeDz = dz / (dist || 1); sfx('rugido'); }
         break;
       case 'investida': {
         const ox = b.x, oz = b.z;
-        this.move(b, b.chargeDx * 7.5 * dt, b.chargeDz * 7.5 * dt, b.r, 'enemy');
+        this.move(b, b.chargeDx * 9 * dt, b.chargeDz * 9 * dt, b.r, 'enemy');
         b.moving = true;
         for (let i = 0; i < 2; i++) this.fx.spawn(b.x, 0.2, b.z, { color: 0x777777, size: 0.25, vy: 1, life: 0.4 });
-        if (Math.hypot(b.x - ox, b.z - oz) < 7.5 * dt * 0.4) { b.state = 'tonto'; b.t = 0; this.shake = 0.35; sfx('pancada'); this.ui.toast('Ele bateu na parede! Ataque agora!'); }
+        if (Math.hypot(b.x - ox, b.z - oz) < 9 * dt * 0.4) { b.state = 'tonto'; b.t = 0; this.shake = 0.35; sfx('pancada'); this.ui.toast('Ele bateu na parede! Ataque agora!'); }
         else if (b.t > 0.9) { b.state = 'perseguir'; b.t = 0; }
         break;
       }
       case 'tonto':
         b.moving = false;
         if (Math.random() < 0.3) this.fx.sparks(b.x, 2.6, b.z, 0xffff66, 1);
-        if (b.t > 1.6) { b.state = 'perseguir'; b.t = 0; }
+        if (b.t > 1.4) { b.state = 'perseguir'; b.t = 0; }
         break;
     }
+    this.updateArenaItem(dt);
     if (broken) {
       b.spawnT += dt;
       const alive = this.room.enemies.filter((e) => e.alive).length;
       if (b.spawnT > 9 && alive < 4) { b.spawnT = 0; this.spawnHorde(2, false); }
     }
-    if (dist < b.r + P_R && b.state !== 'tonto') this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1));
+    if (dist < b.r + P_R && b.state !== 'tonto') this.hurtPlayer(1, dx / (dist || 1), dz / (dist || 1), false, 11);
     this.ui.bossBar('CAPITÃO DE FERRO', b.armor / b.maxArmor, b.hp / b.maxHp);
   }
 
@@ -845,6 +878,7 @@ export class Game {
         b.state = 'perseguir'; b.t = 0;
         this.viewTarget = this.fitRoom(this.room);
         this.spawnHorde(3, true);
+        this.spawnArenaItem();
       }
     } else if (c.kind === 'bossDown') {
       this.viewTarget = this.focusView(b.x, b.z, 4);
@@ -1086,6 +1120,61 @@ export class Game {
     this.finish(this.isPrologue);
   }
 
+  // ---------------- bomba escondida num canto da arena ----------------
+  spawnArenaItem(avoid = -1) {
+    const room = this.room;
+    const corners = [[1, 1], [room.w - 2, 1], [1, room.h - 2], [room.w - 2, room.h - 2]].map(([x, y], i) => ({ x, y, i })).filter((c) => c.i !== avoid && !SOLID.has(this.tiles[c.y][c.x]));
+    const c = corners[Math.floor(Math.random() * corners.length)];
+    if (!c) return;
+    const g = new THREE.Group();
+    const b = Props.bomb(false);
+    b.group.position.y = 0.3;
+    g.add(b.group);
+    const ring = Props.reticle(0x2ec8ff);
+    ring.group.scale.setScalar(0.6);
+    g.add(ring.group);
+    g.position.set(room.off.x + c.x + 0.5, 0, room.off.z + c.y + 0.5);
+    this.scene.add(g);
+    this.arenaItem = { g, x: g.position.x, z: g.position.z, corner: c.i, respawn: 0, waitLeave: false, bomb: b };
+    this.fx.sparks(g.position.x, 0.5, g.position.z, 0x2ec8ff, 10);
+  }
+
+  updateArenaItem(dt) {
+    const it = this.arenaItem;
+    if (!it) return;
+    if (!it.g) {
+      it.respawn -= dt;
+      if (it.respawn <= 0 && this.room.boss && this.room.boss.alive) this.spawnArenaItem(it.corner);
+      return;
+    }
+    it.bomb.group.rotation.y += dt * 2;
+    it.bomb.group.position.y = 0.3 + Math.sin(this.time * 4) * 0.08;
+    const p = this.player;
+    const d = Math.hypot(it.x - p.x, it.z - p.z);
+    if (it.waitLeave) { if (d > 1.4) it.waitLeave = false; return; }
+    if (d > 0.7 || p.dead) return;
+    const take = (inv) => {
+      this.inv = inv;
+      this.refreshSlots();
+      this.persistInv();
+      this.scene.remove(it.g);
+      it.g = null;
+      it.respawn = 20;
+      sfx('bau');
+      this.ui.toast('💣 Bombas! Segure ATACAR para mirar.', 1800);
+    };
+    const r = addItem(this.inv, 'bombas');
+    if (r.ok) { take(r.inv); return; }
+    if (r.reason === 'ja-tem') return;
+    this.paused = true;
+    this.input.reset();
+    const names = [1, 2].map((i) => `Largar ${ITEMS[this.inv.slots[i].id].icon} ${ITEMS[this.inv.slots[i].id].name}`);
+    this.ui.choice('Mochila cheia!', 'Achou 💣 Bombas. Para levar, precisa largar uma arma:', [...names, 'Deixar aqui'], (k) => {
+      this.paused = false;
+      if (k < 2) take(addItem(this.inv, 'bombas', k + 1).inv); else it.waitLeave = true;
+    });
+  }
+
   // ---------------- diamantes, inventário e loja ----------------
   addDiamond() { this.save.crystals++; this.result.crystals++; }
 
@@ -1202,21 +1291,25 @@ export class Game {
   handleBombInput(dt, item) {
     const inp = this.input;
     const p = this.player;
+    const room = this.room;
     if (inp.attackPressed && !this.aim && this.weaponCd <= 0) {
-      this.aim = { item, dir: p.face, dist: 1.6, dirn: 1, beep: 0 };
+      // o Lunerb para e o direcional passa a mexer a mira
+      this.aim = { item, tx: p.x + Math.sin(p.face) * 2.2, tz: p.z + Math.cos(p.face) * 2.2, beep: 0 };
       this.reticle.group.visible = true;
       sfx('mira');
     }
     const a = this.aim;
     if (!a) return;
-    a.dist += a.dirn * 4.2 * dt;
-    if (a.dist > 6) { a.dist = 6; a.dirn = -1; }
-    if (a.dist < 1.2) { a.dist = 1.2; a.dirn = 1; }
-    a.beep += dt;
-    if (a.beep > 0.22) { a.beep = 0; sfx('mira'); }
-    const room = this.room;
-    a.tx = THREE.MathUtils.clamp(p.x + Math.sin(a.dir) * a.dist, room.off.x + 0.5, room.off.x + room.w - 0.5);
-    a.tz = THREE.MathUtils.clamp(p.z + Math.cos(a.dir) * a.dist, room.off.z + 0.5, room.off.z + room.h - 0.5);
+    const d = inp.dir();
+    const mx = (d.x + d.y) * SQ2, mz = (-d.x + d.y) * SQ2;
+    a.tx += mx * 5.5 * dt; a.tz += mz * 5.5 * dt;
+    const ddx = a.tx - p.x, ddz = a.tz - p.z, dd = Math.hypot(ddx, ddz);
+    if (dd > 6.5) { a.tx = p.x + ddx / dd * 6.5; a.tz = p.z + ddz / dd * 6.5; }
+    a.tx = THREE.MathUtils.clamp(a.tx, room.off.x + 0.5, room.off.x + room.w - 0.5);
+    a.tz = THREE.MathUtils.clamp(a.tz, room.off.z + 0.5, room.off.z + room.h - 0.5);
+    a.dir = Math.atan2(a.tx - p.x, a.tz - p.z);
+    p.face = turnTo(p.face, a.dir, dt * 12);
+    if (mx || mz) { a.beep += dt; if (a.beep > 0.25) { a.beep = 0; sfx('mira'); } }
     const near = Math.hypot(a.tx - p.x, a.tz - p.z) < (item === 'superbomba' ? 2.6 : 1.7);
     this.reticle.group.position.set(a.tx, 0.04, a.tz);
     const s = (item === 'superbomba' ? 1.6 : 1) * (1 + Math.sin(this.time * 12) * 0.08);
@@ -1284,8 +1377,22 @@ export class Game {
       else if (sup) { t.armor = 0; this.damage(t, 99, dx / (d || 1), dz / (d || 1)); }
       else { if (t.armor) t.armor = 0; this.damage(t, 7, dx / (d || 1), dz / (d || 1)); }
     }
-    // explosão quebra parede rachada e acende tocha
+    // explosão quebra paredes de dentro (abre caminhos novos!), parede rachada e acende tocha
     const room = this.room;
+    const wr = sup ? 2.7 : 1.35;
+    let broke = 0;
+    for (let ty = 1; ty < room.h - 1; ty++) for (let tx = 1; tx < room.w - 1; tx++) {
+      if (this.tiles[ty][tx] !== '#') continue;
+      if (Math.hypot(room.off.x + tx + 0.5 - x, room.off.z + ty + 0.5 - z) > wr) continue;
+      if (room.vis.breakWall(tx, ty)) {
+        this.tiles[ty][tx] = '.';
+        broke++;
+        const cx = room.off.x + tx + 0.5, cz = room.off.z + ty + 0.5;
+        for (let i = 0; i < 6; i++) { const a = Math.random() * 6.28; this.fx.spawn(cx, 0.6, cz, { color: 0x8c8690, size: 0.18 + Math.random() * 0.15, vx: Math.cos(a) * 3, vy: 3 + Math.random() * 3, vz: Math.sin(a) * 3, life: 1.2, gravity: 12, shrink: false, spin: 8 }); }
+        this.fx.smoke(cx, cz, 1.2);
+      }
+    }
+    if (broke) { sfx('quebra'); this.ui.toast(broke > 1 ? 'A bomba abriu um caminho novo!' : 'A bomba quebrou a parede!', 1600); }
     for (const c of room.vis.cracks) if (!c.broken && Math.hypot(room.off.x + c.tx + 0.5 - x, room.off.z + c.ty + 0.5 - z) < (sup ? 6 : 2.4)) this.hitTile(room.off.x + c.tx + 0.5, room.off.z + c.ty + 0.5, 9, false);
     for (const t of room.vis.torches) if (!t.lit && Math.hypot(room.off.x + t.lx - x, room.off.z + t.lz - z) < (sup ? 8 : 2.6)) this.hitTile(room.off.x + t.lx, room.off.z + t.lz, 0, true);
     // perto demais: o Lunerb também se machuca e sai voando
@@ -1518,6 +1625,9 @@ export class Game {
       r.scale.setScalar(2.8 * (b.hit > 0 ? 1.06 : 1));
       const w = b.moving ? Math.sin(this.time * 7) * 0.5 : 0;
       b.m.legs[0].rotation.x = w; b.m.legs[1].rotation.x = -w;
+      if (b.state === 'agachar') { b.m.arms.forEach((a) => (a.rotation.x = -0.4)); r.position.y = -0.15; r.rotation.x = 0.25; }
+      else if (b.state === 'bote') { b.m.arms.forEach((a) => (a.rotation.x = -2.2)); r.position.y = Math.sin(Math.min(1, b.t / 0.38) * Math.PI) * 1.1; r.rotation.x = -0.2; }
+      else r.rotation.x = 0;
       if (b.state === 'erguer') b.m.arms.forEach((a) => (a.rotation.x = -2.9));
       else if (b.state === 'pancada') b.m.arms.forEach((a) => (a.rotation.x = -0.6));
       else if (b.state === 'tonto') { b.m.arms.forEach((a) => (a.rotation.x = -0.2)); r.rotation.z = Math.sin(this.time * 6) * 0.08; }
