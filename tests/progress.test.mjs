@@ -76,3 +76,10 @@ test('upgrades deixam a arma mais forte e rápida', () => {
   assert.ok(b.fireCooldown < a.fireCooldown && b.fireCooldown > 0.1);
   assert.ok(b.laserCharge < a.laserCharge && b.laserCharge > 0.2);
 });
+
+test('herói principal: só vale amigo já resgatado', () => {
+  assert.equal(newSave().lead, 'lunerb');
+  assert.equal(normalizeSave({ lead: 'feligon' }).lead, 'lunerb', 'sem resgatar ainda não pode');
+  assert.equal(normalizeSave({ friends: ['feligon'], lead: 'feligon' }).lead, 'feligon');
+  assert.equal(normalizeSave({ friends: ['feligon'], lead: 'hacker' }).lead, 'lunerb');
+});

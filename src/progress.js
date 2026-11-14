@@ -4,9 +4,9 @@ import { newInventory, normalizeInventory, capacityFor } from './inventory.js';
 export const SAVE_VERSION = 1;
 
 export const UPGRADES = {
-  fogo: { name: 'Fogo Forte', desc: 'Bolas de fogo mais fortes', costs: [15, 30, 50] },
-  rapidez: { name: 'Mão Rápida', desc: 'Atira mais rápido', costs: [15, 30, 50] },
-  laser: { name: 'Laser Turbo', desc: 'Laser carrega mais rápido e bate mais forte', costs: [25, 50] },
+  fogo: { name: 'Fogo Forte', desc: 'Tiros mais fortes para todos os heróis', costs: [15, 30, 50] },
+  rapidez: { name: 'Mão Rápida', desc: 'Todos os heróis atiram mais rápido', costs: [15, 30, 50] },
+  laser: { name: 'Laser Turbo', desc: 'Tiro carregado mais rápido e mais forte (para todos)', costs: [25, 50] },
 };
 
 export function newSave() {
@@ -19,6 +19,7 @@ export function newSave() {
     weapons: 0,           // quantas Booteshiscore o Lunerb já tem (0, 1 ou 2)
     inventory: newInventory(), // armas extras (bombas, choque, turbina...)
     friends: [],          // amigos resgatados (ex.: 'feligon')
+    lead: 'lunerb',       // herói principal escolhido pelo jogador
     endings: {},          // finais de mundo já vistos
     storySeen: false,
     endingSeen: false,
@@ -47,6 +48,7 @@ export function normalizeSave(raw) {
   s.stars = stars;
   s.friends = Array.isArray(raw.friends) ? [...new Set(raw.friends.filter((f) => f === 'feligon' || f === 'dait'))] : [];
   s.inventory = normalizeInventory(raw.inventory, capacityFor(s.friends));
+  s.lead = s.friends.includes(raw.lead) ? raw.lead : 'lunerb';
   s.endings = raw.endings && typeof raw.endings === 'object' ? { ...raw.endings } : {};
   if (raw.endingSeen) s.endings[1] = true;
   s.storySeen = !!s.storySeen;

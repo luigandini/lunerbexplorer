@@ -79,7 +79,13 @@ console.log('trocou pelo rostinho', await G(() => window.__lunerb.game.player.id
 // Feligon jogando: atira sementes
 await G(() => { const g = window.__lunerb.game; const e = g.makeEnemy('zumbi', g.player.x + 2.5, g.player.z, false); e.m.root.visible = true; e.speed = 0; g.room.enemies.push(e); });
 await page.keyboard.down('j'); await wait(800); await page.keyboard.up('j');
-console.log('sementes do jogador', await G(() => window.__lunerb.game.shots.some((s) => s.seed && !s.friend) || true));
+await G(() => { const g = window.__lunerb.game; window.__lasers = 0; window.__dmg = []; const fl = g.fireLaser.bind(g); g.fireLaser = () => { window.__lasers++; fl(); }; const ss = g.spawnShot.bind(g); g.spawnShot = (...a) => { ss(...a); window.__dmg.push(g.shots[g.shots.length - 1].dmg); }; });
+await page.keyboard.down('j'); await wait(800); await page.keyboard.up('j');
+console.log('força igual', await G(() => { const g = window.__lunerb.game; const f = g.heroes.find((h) => h.id === 'feligon'), l = g.heroes.find((h) => h.id === 'lunerb'); const mine = g.shots.filter((s) => !s.friend); return { armasF: f.weapons, armasL: l.weapons, dano: window.__dmg, danoLunerb: g.stats.fireDamage, lead: g.save.lead }; }));
+// segurar e soltar: espinho gigante (mesmo laser do Lunerb)
+await page.keyboard.down('j'); await W(() => { const g = window.__lunerb.game; return g.player.charge >= g.stats.laserCharge; }, 60000); await page.keyboard.up('j'); await wait(300);
+console.log('espinho gigante', await G(() => window.__lasers));
+await shot('41-espinho');
 // 3 toques rápidos no botão verde: volta para o Lunerb
 for (let i = 0; i < 3; i++) { await page.keyboard.down('l'); await wait(60); await page.keyboard.up('l'); await wait(80); }
 await wait(400);
@@ -118,6 +124,11 @@ await W(() => !['intro', 'dormindo'].includes(window.__lunerb.game.room.boss.sta
 await W(() => ['raizes', 'bolotas', 'erguer', 'galhada'].includes(window.__lunerb.game.room.boss.state), 200000);
 await wait(500); await shot('37-anciao');
 console.log('ancião', await G(() => window.__lunerb.game.room.boss.state));
+// herói principal salvo: recomeçar a fase com o Feligon no controle
+await G(() => { const g = window.__lunerb.game; g.switchHero(); if (g.player.id !== 'feligon') g.switchHero(); });
+await G(() => { window.__lunerb.startLevel(4); });
+await W(() => window.__lunerb.game.def.id === 4 && window.__lunerb.game.running && window.__lunerb.game.heroes.length > 1, 60000);
+console.log('começa com o principal', await G(() => ({ player: window.__lunerb.game.player.id, lead: window.__lunerb.game.save.lead })));
 console.log('ERROS:', errors.length ? errors : 'nenhum');
 await browser.close(); server.close();
 process.exit(errors.length ? 1 : 0);

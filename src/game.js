@@ -47,6 +47,14 @@ const THEMES = {
   castle: { bg: 'bgCastle', hemi: [0xb4c0f0, 0x40363a, 1.6], sun: [0xdde4ff, 2.4], player: 4, torch: 7, exposure: 1.45 },
 };
 
+// cada herói tem a arma dele, todas com a MESMA força (só muda a cor e o som)
+const HERO_STYLE = {
+  lunerb: { core: 0xffe27a, outer: 0xff5a14, beam: 0xff2020, spark: 0xff3030, shot: 'fogo', melee: 'soco' },
+  feligon: { core: 0xd8ffb0, outer: 0x5cdf3a, beam: 0x3dff4a, spark: 0x7dff6a, shot: 'folha', melee: 'soco' },
+  dait: { core: 0xe6ffff, outer: 0x2ee6ff, beam: 0x22d8ff, spark: 0x7af4ff, shot: 'laser', melee: 'soco' },
+};
+const styleOf = (h) => HERO_STYLE[h.id] || HERO_STYLE.lunerb;
+
 export class Game {
   constructor({ renderer, ui, input }) {
     this.renderer = renderer;
@@ -151,7 +159,11 @@ export class Game {
     this.frozen = true; this.cine = null; this.trans = null; this.ended = false;
     this.tips = { turbo: false };
     this.lightTimer = 0;
-    if (this.pendingFriend) this.spawnFriend(this.player.x - 0.8, this.player.z);
+    if (this.pendingFriend) {
+      this.spawnFriend(this.player.x - 0.8, this.player.z);
+      const lead = this.heroes.find((h) => h.id === save.lead);
+      if (lead && lead !== this.player) { this.friend = this.player; this.player = lead; }
+    }
     this.enterRoom(0, true);
     this.view = { ...this.viewTarget };
     this.running = true;
@@ -306,9 +318,13 @@ export class Game {
     this.refreshSlots();
     this.ui.setControls({ attack: true, turbo: true, friend: !!this.friend });
     this.hud(true);
-    this.fx.sparks(other.x, 1, other.z, other.id === 'feligon' ? 0x7dff6a : 0xffc890, 12);
+    this.fx.sparks(other.x, 1, other.z, styleOf(other).spark, 12);
     sfx('amigo');
-    if (!auto) this.ui.toast(`Agora você é o ${other.name}!`, 1200);
+    if (!auto) {
+      this.ui.toast(`Agora você é o ${other.name}!`, 1200);
+      this.save.lead = other.id;
+      if (this.onPersist) this.onPersist();
+    }
     return true;
   }
 
@@ -356,6 +372,15 @@ export class Game {
       state: 'dormindo', t: 0, cycle: 0, r: B.r, kvx: 0, kvz: 0, face: -Math.PI / 2, hit: 0, chargeDx: 0, chargeDz: 0,
       spawnT: 0, hordeDone: false, ring: null,
     };
+  }
+
+  // nível de arma do time: o que o Lunerb já conquistou vale para todos
+  teamWeapons() {
+    return Math.max(this.save.weapons || 0, ...(this.heroes || []).filter((h) => h.id !== 'lucas').map((h) => h.weapons || 0));
+  }
+
+  setTeamWeapons(n) {
+    for (const h of this.heroes) if (h.id !== 'lucas' && h.weapons < n) h.weapons = n;
   }
 
   updateGuns() {
@@ -544,7 +569,6 @@ export class Game {
     if (this.friendAim) return;
     const slot = this.inv.sel >= 0 ? this.inv.slots[this.inv.sel] : null;
     const item = slot ? slot.id : 'propria';
-    if (item === 'propria' && p.id === 'feligon') { if (inp.attack && p.atkCd <= 0) this.fireSeeds(); return; }
     if (item === 'bombas' || item === 'superbomba') { this.handleBombInput(dt, item); return; }
     if (item === 'choque') { if (inp.attackPressed || (inp.attack && this.weaponCd <= 0)) this.fireChoque(); return; }
     if (item === 'turbina') { if (inp.attackPressed) this.toggleBeam(); return; }
@@ -554,7 +578,7 @@ export class Game {
         const before = p.charge;
         p.charge += dt;
         if (before < this.stats.laserCharge && p.charge >= this.stats.laserCharge) sfx('carga');
-        if (p.charge > 0.25) { p.aimT = 0.2; if (Math.random() < 0.5) this.fx.sparks(p.x, 0.8, p.z, 0xff3030, 1); }
+        if (p.charge > 0.25) { p.aimT = 0.2; if (Math.random() < 0.5) this.fx.sparks(p.x, 0.8, p.z, styleOf(p).spark, 1); }
       }
       if (inp.attackReleased && p.charging) {
         if (p.charge >= this.stats.laserCharge) this.fireLaser();
@@ -587,7 +611,7 @@ export class Game {
     const fx = Math.sin(p.face), fz = Math.cos(p.face);
     if ((e && d < 1.3) || p.weapons === 0) {
       p.meleeT = 0.22; p.meleeSide = 1 - p.meleeSide; p.atkCd = 0.32;
-      sfx('soco');
+      sfx(styleOf(p).melee);
       let hit = false;
       for (const t of this.targets()) {
         const dx = t.x - p.x, dz = t.z - p.z, dist = Math.hypot(dx, dz);
@@ -599,16 +623,16 @@ export class Game {
     }
     p.aimT = 0.5;
     p.atkCd = this.stats.fireCooldown;
-    sfx('fogo');
+    sfx(styleOf(p).shot);
     const sideX = fz, sideZ = -fx;
     const offs = p.weapons >= 2 ? [-0.24, 0.24] : [0.24];
-    for (const o of offs) this.spawnShot(p.x + fx * 0.5 + sideX * o, p.z + fz * 0.5 + sideZ * o, fx, fz);
+    for (const o of offs) this.spawnShot(p.x + fx * 0.5 + sideX * o, p.z + fz * 0.5 + sideZ * o, fx, fz, styleOf(p));
   }
 
-  spawnShot(x, z, dx, dz) {
+  spawnShot(x, z, dx, dz, st = HERO_STYLE.lunerb) {
     const g = new THREE.Group();
-    const core = new THREE.Mesh(BALL, material(0xffe27a, 'glow')); core.scale.setScalar(0.1); g.add(core);
-    const outer = new THREE.Mesh(BALL, material(0xff5a14, 'glow', 0.7)); outer.scale.setScalar(0.17); g.add(outer);
+    const core = new THREE.Mesh(BALL, material(st.core, 'glow')); core.scale.setScalar(0.1); g.add(core);
+    const outer = new THREE.Mesh(BALL, material(st.outer, 'glow', 0.7)); outer.scale.setScalar(0.17); g.add(outer);
     g.position.set(x, 0.85, z);
     this.scene.add(g);
     this.shots.push({ x, z, dx, dz, speed: 11, life: 1.1, dmg: this.stats.fireDamage, g, outer });
@@ -631,7 +655,7 @@ export class Game {
       if (along > 0 && along < len + t.r && perp < 0.45 + t.r) this.damage(t, this.stats.laserDamage, fx, fz);
     }
     const g = new THREE.Group();
-    const outer = new THREE.Mesh(BEAM, material(0xff2020, 'glow', 0.75)); outer.scale.set(0.16, 0.16, len); g.add(outer);
+    const outer = new THREE.Mesh(BEAM, material(styleOf(p).beam, 'glow', 0.75)); outer.scale.set(0.16, 0.16, len); g.add(outer);
     const core = new THREE.Mesh(BEAM, material(0xffffff, 'glow')); core.scale.set(0.06, 0.06, len); g.add(core);
     g.position.set(p.x + fx * len / 2, 0.85, p.z + fz * len / 2);
     g.rotation.y = p.face;
@@ -1120,7 +1144,7 @@ export class Game {
       this.fx.sparks(ox + c.lx, 0.6, oz + c.lz, 0xffe070, 12);
       const lun = this.heroes.find((h) => h.id === 'lunerb');
       if (c.kind === 'arma' && lun && lun.weapons < this.def.weaponReward) {
-        lun.weapons = this.def.weaponReward;
+        this.setTeamWeapons(this.def.weaponReward);
         this.updateGuns();
         this.refreshSlots();
         this.frozen = true;
@@ -1254,7 +1278,7 @@ export class Game {
   forceComplete() {
     const b = this.rooms[this.rooms.length - 1].boss;
     if (b && b.alive) { b.alive = false; b.m.root.visible = false; this.ui.bossBar(null); }
-    for (const h of this.heroes) if (h.id === 'lunerb' && this.def.weaponReward > h.weapons) h.weapons = this.def.weaponReward;
+    this.setTeamWeapons(this.def.weaponReward);
     if (this.def.boss === 'maeteia' && !this.save.friends.includes('feligon')) this.save.friends.push('feligon');
     this.finish(this.isPrologue);
   }
@@ -1488,7 +1512,7 @@ export class Game {
 
   // ---------------- Feligon: o amigo ----------------
   spawnFriend(x, z) {
-    const f = this.makeHero('feligon');
+    const f = this.makeHero('feligon', this.teamWeapons());
     f.x = x; f.z = z;
     this.heroes.push(f);
     this.friend = f;
@@ -1519,6 +1543,7 @@ export class Game {
       { who: 'Feligon', text: 'Conheço essa floresta inteira. Vou com você até a sua casa!' },
       { who: 'Dica', text: 'O Feligon luta junto. SEGURE o botão verde 🌿 AMIGO, mire com o direcional e solte: ele lança RAÍZES que prendem os monstros e te dão 1 coração!' },
       { who: 'Dica', text: 'Toque no rostinho dele no canto da tela (ou 3 toques rápidos no botão verde) para JOGAR COM O FELIGON! A mochila ganhou mais um espaço.' },
+      { who: 'Dica', text: 'O Feligon tem a MESMA FORÇA do Lunerb: estilingue duplo e, segurando o botão, o ESPINHO GIGANTE. Quem você escolher vira o herói principal nas próximas fases.' },
     ], () => {});
   }
 
@@ -1624,29 +1649,15 @@ export class Game {
 
   // tiro de um herói: sementes (Feligon) ou bola de fogo (Lunerb). O amigo controlado pelo jogo atira com metade da força.
   spawnHeroShot(h, x, z, dx, dz, ai = false) {
-    const seed = h.id === 'feligon';
+    const st = styleOf(h), seed = h.id === 'feligon';
     const g = new THREE.Group();
-    const core = new THREE.Mesh(BALL, material(seed ? 0xd8ffb0 : 0xffe27a, 'glow')); core.scale.setScalar(seed ? 0.07 : 0.09); g.add(core);
-    const outer = new THREE.Mesh(BALL, material(seed ? 0x5cdf3a : 0xff5a14, 'glow', 0.75)); outer.scale.setScalar(seed ? 0.12 : 0.15); g.add(outer);
+    const core = new THREE.Mesh(BALL, material(st.core, 'glow')); core.scale.setScalar(0.09); g.add(core);
+    const outer = new THREE.Mesh(BALL, material(st.outer, 'glow', 0.75)); outer.scale.setScalar(0.15); g.add(outer);
     g.position.set(x, 0.75, z);
     this.scene.add(g);
-    const base = seed ? this.seedDamage() : this.stats.fireDamage;
-    this.shots.push({ x, z, dx, dz, speed: seed ? 11 : 10, life: 0.9, dmg: ai ? base * 0.5 : base, g, outer, friend: ai, seed });
-    sfx(seed ? 'folha' : 'fogo');
-  }
-
-  seedDamage() { return 0.6 + (this.save.upgrades.fogo || 0) * 0.15; }
-
-  // Feligon jogando: estilingue de sementes, rápido e mais fraquinho por tiro
-  fireSeeds() {
-    const p = this.player;
-    const { e } = this.nearestTarget(9);
-    if (e) p.face = Math.atan2(e.x - p.x, e.z - p.z);
-    p.atkCd = Math.max(0.16, 0.24 - (this.save.upgrades.rapidez || 0) * 0.025);
-    p.aimT = 0.3; p.punch = 0.15;
-    const spread = (Math.random() - 0.5) * 0.12;
-    const dx = Math.sin(p.face + spread), dz = Math.cos(p.face + spread);
-    this.spawnHeroShot(p, p.x + dx * 0.45, p.z + dz * 0.45, dx, dz, false);
+    const base = this.stats.fireDamage;
+    this.shots.push({ x, z, dx, dz, speed: 10, life: 0.9, dmg: ai ? base * 0.5 : base, g, outer, friend: ai, seed });
+    sfx(st.shot);
   }
 
   // poder do Lunerb quando o Feligon manda: raio negro que cai no alvo
