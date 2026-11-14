@@ -235,7 +235,7 @@ export class Game {
     }
     this.gateArmed = false;
     this.respawn = { x: p.x, z: p.z };
-    if (this.friend) { this.friend.x = p.x - Math.sin(p.face) * 0.8; this.friend.z = p.z - Math.cos(p.face) * 0.8; this.friend.cmd = null; this.friend.restT = 0; }
+    if (this.friend) { this.friend.cmd = null; this.friend.restT = 0; this.placeFriendNear(p.x, p.z); }
     room.enterT = 0; room.spawnT = 0;
     if (room.boss && room.boss.alive && !first) { p.turbo = 3; p.hp = Math.max(p.hp, 3); this.ui.toast('⚡ Turbo Negro carregado! Corra!', 1800); }
     this.viewTarget = this.fitRoom(room);
@@ -1428,7 +1428,7 @@ export class Game {
       const x = room.off.x + co.lx, z = room.off.z + co.lz;
       this.fx.smoke(x, z, 1.5);
       for (let i = 0; i < 20; i++) this.fx.spawn(x, 0.8, z, { color: 0xf2f2ff, size: 0.12, vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 2, vz: (Math.random() - 0.5) * 4, life: 1, gravity: 6 });
-      if (!this.friend) this.spawnFriend(x, z + 0.6);
+      if (!this.friend) { this.spawnFriend(x, z); this.placeFriendNear(x, z, false); }
     }
     if (already) { this.ui.dialog([{ who: 'Feligon', text: 'Esse casulo de novo? Ainda bem que eu já estava com você!' }], () => {}); return; }
     this.save.friends.push('feligon');
@@ -1482,37 +1482,42 @@ export class Game {
     this.ui.friendCooldown(f.cd);
     f.atkCd = Math.max(0, f.atkCd - dt);
     if (f.restT > 0) { f.restT -= dt; f.moving = false; return; }
-    let tx = null, tz = null, speed = 4.6;
+    let tx = null, tz = null, speed = 4.8, target = null;
+    // ponto de retaguarda: um pouco atrás do Lunerb
+    const bx = p.x - Math.sin(p.face) * 1.5, bz = p.z - Math.cos(p.face) * 1.5;
     if (f.cmd) {
       f.cmd.t += dt;
       tx = f.cmd.tx; tz = f.cmd.tz; speed = 9;
-      if (Math.hypot(tx - f.x, tz - f.z) < 0.45 || f.cmd.t > 1.6) { this.castRoots(tx, tz); f.cmd = null; }
+      if (Math.hypot(tx - f.x, tz - f.z) < 0.5 || f.cmd.t > 2.2) { this.castRoots(f.cmd.tx, f.cmd.tz); f.cmd = null; }
     } else {
-      let best = null, bd = 4.8;
-      for (const e of this.targets()) { const d = Math.hypot(e.x - p.x, e.z - p.z); if (d < bd) { bd = d; best = e; } }
+      // atira de longe no monstro mais perto (tiro fraco: metade da bola de fogo do Lunerb)
+      let best = null, bd = 6.5;
+      for (const e of this.targets()) { const d = Math.hypot(e.x - f.x, e.z - f.z); if (d < bd) { bd = d; best = e; } }
+      target = best;
       if (best) {
-        const d = Math.hypot(best.x - f.x, best.z - f.z);
-        f.face = Math.atan2(best.x - f.x, best.z - f.z);
-        if (d > best.r + 0.55) { tx = best.x; tz = best.z; }
-        else if (f.atkCd <= 0) {
-          f.atkCd = 0.6; f.punch = 0.22;
-          this.damage(best, 1.5, Math.sin(f.face), Math.cos(f.face));
-          for (let i = 0; i < 4; i++) this.fx.spawn(best.x, 0.7, best.z, { color: 0x7dff6a, size: 0.08, vx: (Math.random() - 0.5) * 3, vy: 2, vz: (Math.random() - 0.5) * 3, life: 0.4, emissive: 1 });
-          sfx('soco');
+        f.face = turnTo(f.face, Math.atan2(best.x - f.x, best.z - f.z), dt * 14);
+        if (f.atkCd <= 0) {
+          f.atkCd = 0.85;
+          f.punch = 0.2;
+          const dx = best.x - f.x, dz = best.z - f.z, d = Math.hypot(dx, dz) || 1;
+          this.spawnFriendShot(f.x + dx / d * 0.4, f.z + dz / d * 0.4, dx / d, dz / d);
         }
-      } else {
-        const bx = p.x - Math.sin(p.face) * 1.1, bz = p.z - Math.cos(p.face) * 1.1;
-        if (Math.hypot(bx - f.x, bz - f.z) > 0.6) { tx = bx; tz = bz; }
       }
+      if (Math.hypot(bx - f.x, bz - f.z) > 0.8) { tx = bx; tz = bz; }
     }
     f.moving = tx !== null;
     if (f.moving) {
-      const ddx = tx - f.x, ddz = tz - f.z, d = Math.hypot(ddx, ddz) || 1;
+      // contorna árvores e paredes procurando o caminho no mapa da sala
+      const wp = this.pathStep(f, tx, tz);
+      const ddx = wp.x - f.x, ddz = wp.z - f.z, d = Math.hypot(ddx, ddz) || 1;
+      const ox = f.x, oz = f.z;
       this.move(f, ddx / d * speed * dt, ddz / d * speed * dt, 0.26, 'player');
-      if (!f.cmd || true) f.face = turnTo(f.face, Math.atan2(ddx, ddz), dt * 12);
-      if (Math.hypot(f.x - p.x, f.z - p.z) > 9) { f.x = p.x; f.z = p.z; } // ficou preso: volta para perto
-    }
-    // monstro encostou no Feligon: ele cai e descansa um pouquinho (não se machuca de verdade)
+      if (!target || f.cmd) f.face = turnTo(f.face, Math.atan2(ddx, ddz), dt * 12);
+      // ficou preso mesmo assim? aparece de novo atrás do Lunerb
+      f.stuckT = Math.hypot(f.x - ox, f.z - oz) < speed * dt * 0.25 ? (f.stuckT || 0) + dt : 0;
+      if (f.stuckT > 1 || Math.hypot(f.x - p.x, f.z - p.z) > 10) this.placeFriendNear(p.x, p.z, true);
+    } else f.stuckT = 0;
+    // monstro deu bote no Feligon: ele cai e descansa um pouquinho (não se machuca de verdade)
     f.hitCheck -= dt;
     if (f.hitCheck <= 0) {
       f.hitCheck = 0.3;
@@ -1522,6 +1527,84 @@ export class Game {
         }
       }
     }
+  }
+
+  spawnFriendShot(x, z, dx, dz) {
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(BALL, material(0xd8ffb0, 'glow')); core.scale.setScalar(0.07); g.add(core);
+    const outer = new THREE.Mesh(BALL, material(0x5cdf3a, 'glow', 0.75)); outer.scale.setScalar(0.12); g.add(outer);
+    g.position.set(x, 0.75, z);
+    this.scene.add(g);
+    this.shots.push({ x, z, dx, dz, speed: 10, life: 0.9, dmg: this.stats.fireDamage * 0.5, g, outer, friend: true });
+    sfx('folha');
+  }
+
+  // caminho mais curto (quadradinho por quadradinho) até o alvo, desviando do que é sólido
+  pathStep(ent, tx, tz) {
+    const room = this.room;
+    const sx = Math.floor(ent.x - room.off.x), sz = Math.floor(ent.z - room.off.z);
+    let gx = Math.floor(tx - room.off.x), gz = Math.floor(tz - room.off.z);
+    const blocked = (x, z) => this.solidLocal(x, z, 'player') || this.tiles[z][x] === 'L';
+    if (sx === gx && sz === gz) return { x: tx, z: tz };
+    const key = `${sx},${sz}>${gx},${gz}`;
+    ent.pathT = (ent.pathT || 0) - 1;
+    if (ent.pathKey === key && ent.pathT > 0 && ent.pathNext) return ent.pathNext;
+    ent.pathKey = key; ent.pathT = 8;
+    if (gx < 0 || gz < 0 || gx >= room.w || gz >= room.h || blocked(gx, gz)) {
+      // alvo dentro de algo sólido: procura o quadradinho livre mais perto
+      let bestD = 99;
+      for (let z = 0; z < room.h; z++) for (let x = 0; x < room.w; x++) {
+        if (blocked(x, z)) continue;
+        const d = Math.hypot(x - gx, z - gz);
+        if (d < bestD) { bestD = d; tx = room.off.x + x + 0.5; tz = room.off.z + z + 0.5; }
+      }
+      gx = Math.floor(tx - room.off.x); gz = Math.floor(tz - room.off.z);
+    }
+    const W = room.w, prev = new Int32Array(W * room.h).fill(-1);
+    const start = sz * W + sx, goal = gz * W + gx;
+    if (sx < 0 || sz < 0 || sx >= W || sz >= room.h) return { x: tx, z: tz };
+    prev[start] = start;
+    const q = [start];
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    while (q.length) {
+      const c = q.shift();
+      if (c === goal) break;
+      const cx = c % W, cz = (c / W) | 0;
+      for (const [dx, dz] of dirs) {
+        const nx = cx + dx, nz = cz + dz;
+        if (nx < 0 || nz < 0 || nx >= W || nz >= room.h || blocked(nx, nz)) continue;
+        if (dx && dz && (blocked(cx + dx, cz) || blocked(cx, cz + dz))) continue; // não corta canto
+        const n = nz * W + nx;
+        if (prev[n] !== -1) continue;
+        prev[n] = c;
+        q.push(n);
+      }
+    }
+    if (prev[goal] === -1) { ent.pathNext = { x: tx, z: tz }; return ent.pathNext; }
+    let c = goal;
+    while (prev[c] !== start && prev[c] !== c) c = prev[c];
+    if (c === goal) { ent.pathNext = { x: tx, z: tz }; return ent.pathNext; }
+    ent.pathNext = { x: room.off.x + (c % W) + 0.5, z: room.off.z + ((c / W) | 0) + 0.5 };
+    return ent.pathNext;
+  }
+
+  // coloca o Feligon num lugar livre perto de um ponto (nunca dentro de árvore ou parede)
+  placeFriendNear(x, z, poof = false) {
+    const f = this.friend, room = this.room;
+    if (!f || !room) return;
+    let best = null, bd = 99;
+    const cx = Math.floor(x - room.off.x), cz = Math.floor(z - room.off.z);
+    for (let tz = Math.max(0, cz - 3); tz <= Math.min(room.h - 1, cz + 3); tz++) for (let tx = Math.max(0, cx - 3); tx <= Math.min(room.w - 1, cx + 3); tx++) {
+      if (this.solidLocal(tx, tz, 'player') || this.tiles[tz][tx] === 'L' || (tx === cx && tz === cz)) continue;
+      const t = this.tiles[tz][tx];
+      if (t === 'X' || t === 'E') continue;
+      const d = Math.hypot(tx - cx, tz - cz);
+      if (d < bd) { bd = d; best = [tx, tz]; }
+    }
+    if (!best) return;
+    f.x = room.off.x + best[0] + 0.5; f.z = room.off.z + best[1] + 0.5;
+    f.stuckT = 0; f.pathKey = null;
+    if (poof) this.fx.smoke(f.x, f.z, 0.6);
   }
 
   castRoots(x, z) {

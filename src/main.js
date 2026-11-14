@@ -153,7 +153,7 @@ function showMap() {
   pro.className = 'world prologue';
   pro.innerHTML = '<h3>Prólogo<br>A Floresta</h3>';
   const pb = document.createElement('button');
-  pb.className = 'phase';
+  pb.className = `phase${save.unlocked < 1 ? ' next' : ''}`;
   pb.innerHTML = `Jogar${save.unlocked >= 1 ? '<span class="st">✔</span>' : '<span class="st">▶</span>'}`;
   pb.onclick = () => { sfx('clique'); startLevel(0); };
   pro.appendChild(pb);
@@ -167,11 +167,12 @@ function showMap() {
       const lvl = getLevel(id);
       const open = lvl && isUnlocked(save, id, testMode);
       const b = document.createElement('button');
-      b.className = `phase${open ? '' : ' locked'}`;
+      const isNext = open && lvl && id === nextPhase();
+      b.className = `phase${open ? '' : ' locked'}${isNext ? ' next' : ''}${open && !isNext && (save.stars[id] || [])[0] ? ' done' : ''}`;
       const st = save.stars[id] || [];
       const stars = [0, 1, 2].map((i) => (st[i] ? '★' : '<i>★</i>')).join('');
       b.innerHTML = lvl
-        ? `Fase ${id}${open ? '' : ' 🔒'}<span class="st">${stars}</span>`
+        ? `${isNext ? '▶ ' : ''}Fase ${id}${open ? '' : ' 🔒'}<span class="st">${stars}</span>`
         : `Fase ${id}<span class="st" style="font-size:11px;color:#888">em breve</span>`;
       if (open) b.onclick = () => { sfx('clique'); startLevel(id); };
       div.appendChild(b);
@@ -179,6 +180,13 @@ function showMap() {
     box.appendChild(div);
   }
   playMusic('title');
+}
+
+// a fase que o jogador deve jogar agora (a primeira liberada que ainda não terminou)
+function nextPhase() {
+  const ids = LEVELS.filter((l) => l.kind === 'fase').map((l) => l.id);
+  for (const id of ids) if (isUnlocked(save, id, false) && !(save.stars[id] || [])[0]) return id;
+  return null;
 }
 
 function showForge() {
@@ -283,17 +291,23 @@ function levelDone(id, res) {
   $('res-crystals').textContent = res.crystals;
   ui.show('scr-result');
   setPose('hero');
+  const nextId = getLevel(id + 1) && isUnlocked(save, id + 1, testMode) ? id + 1 : null;
+  $('btn-res-ok').textContent = endInfo ? 'Continuar ▶' : nextId ? 'Próxima fase ▶' : 'Continuar ▶';
   $('btn-res-ok').onclick = () => {
     sfx('clique');
     if (endInfo) {
       playMusic('ending');
-      playStory(endInfo.slides, () => { save.endings = { ...save.endings, [endInfo.world]: true }; save.endingSeen = true; writeSave(save); showCredits(endInfo.next); });
-    } else showMap();
+      playStory(endInfo.slides, () => { save.endings = { ...save.endings, [endInfo.world]: true }; save.endingSeen = true; writeSave(save); showCredits(endInfo.next, nextId); });
+    } else if (nextId) startLevel(nextId);
+    else showMap();
   };
+  $('btn-res-map').onclick = () => { sfx('clique'); showMap(); };
 }
 
-function showCredits(next) {
+function showCredits(next, nextId = null) {
   if (next) document.querySelector('#scr-credits .soon').textContent = next;
+  $('btn-credits-ok').textContent = nextId ? 'Continuar a aventura ▶' : 'Voltar ao mapa';
+  $('btn-credits-ok').onclick = () => { sfx('clique'); if (nextId) startLevel(nextId); else showMap(); };
   ui.show('scr-credits');
   setPose('hero');
   playMusic('ending');
@@ -326,7 +340,6 @@ $('btn-map-back').onclick = () => { sfx('clique'); showTitle(); };
 $('btn-forge').onclick = () => { sfx('clique'); showForge(); };
 $('btn-forge-back').onclick = () => { sfx('clique'); showMap(); };
 $('btn-test-gems').onclick = () => { save.crystals += 100; writeSave(save); showForge(); };
-$('btn-credits-ok').onclick = () => { sfx('clique'); showMap(); };
 
 $('btn-pause').addEventListener('pointerdown', (e) => { e.preventDefault(); pause(true); });
 $('btn-resume').onclick = () => pause(false);

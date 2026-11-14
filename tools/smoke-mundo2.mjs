@@ -72,6 +72,18 @@ await wait(4000);
 console.log('estado f4', await G(() => { const g = window.__lunerb.game; return { id: g.def.id, run: g.running, dlg: window.__lunerb.ui.dialogOpen, frozen: g.frozen }; }), errors);
 await W(() => window.__lunerb.game.def.id === 4 && window.__lunerb.ui.dialogOpen); await dlg();
 console.log('fase 4 com amigo', await G(() => !!window.__lunerb.game.friend));
+console.log('feligon em lugar livre', await G(() => { const g = window.__lunerb.game; const f = g.friend; return !g.solidLocal(Math.floor(f.x - g.room.off.x), Math.floor(f.z - g.room.off.z), 'player'); }));
+// Feligon atira de longe
+await G(() => { const g = window.__lunerb.game; const e = g.makeEnemy('zumbi', g.friend.x + 3.5, g.friend.z + 1, false); e.m.root.visible = true; e.awake = false; e.speed = 0; g.room.enemies.push(e); window.__alvo = e; });
+await W(() => window.__lunerb.game.shots.some((s) => s.friend), 60000);
+console.log('feligon atirou', true);
+await wait(3000);
+console.log('vida do alvo', await G(() => window.__alvo.hp));
+// preso na árvore: tem que se soltar
+await G(() => { const g = window.__lunerb.game; window.__alvo.alive = false; window.__alvo.m.root.visible = false; g.friend.x = g.room.off.x + 0.5; g.friend.z = g.room.off.z + 0.5; g.player.x = g.room.off.x + 8.5; g.player.z = g.room.off.z + 5.5; });
+await W(() => { const g = window.__lunerb.game; return Math.hypot(g.friend.x - g.player.x, g.friend.z - g.player.z) < 3; }, 90000);
+console.log('feligon se soltou', true);
+await shot('38-feligon-retaguarda');
 await G(() => { const g = window.__lunerb.game; g.ui.invincible = true; g.testMode = true; g.startTransition(4); });
 await W(() => window.__lunerb.game.room.i === 4 && !window.__lunerb.game.trans);
 await G(() => { const g = window.__lunerb.game; g.player.x = g.room.boss.x - 5; g.player.z = g.room.boss.z; });

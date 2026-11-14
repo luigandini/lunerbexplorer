@@ -162,6 +162,7 @@ const SFX = {
   espinho: (t) => { noise(t, 0.08, 0.2, sfxGain, 4000); tone(900, t, 0.08, 'square', 0.06, sfxGain, 400); },
   arvore: (t) => { growl(t, 1.6, 55, 0.35, 5); noise(t, 1.2, 0.25, sfxGain, 300, 'lowpass', 100); for (let i = 0; i < 6; i++) noise(t + 0.2 + i * 0.15, 0.08, 0.15, sfxGain, 1500, 'bandpass', 800, 3); },
   raizes: (t) => { noise(t, 0.6, 0.3, sfxGain, 300, 'lowpass', 900); for (let i = 0; i < 5; i++) noise(t + i * 0.08, 0.06, 0.15, sfxGain, 1200, 'bandpass', 600, 3); tone(330, t + 0.3, 0.4, 'triangle', 0.1, sfxGain, 660); },
+  folha: (t) => { noise(t, 0.12, 0.12, sfxGain, 2500, 'bandpass', 900, 2); tone(700, t, 0.08, 'triangle', 0.06, sfxGain, 1200); },
   amigo: (t) => { [392, 494, 587, 784].forEach((f, i) => tone(f, t + i * 0.08, 0.2, 'triangle', 0.13)); },
   susto: (t) => { tone(1800, t, 0.5, 'sine', 0.05, sfxGain, 1700); tone(1907, t, 0.5, 'sine', 0.05, sfxGain, 1800); },
 };

@@ -152,3 +152,6 @@ button.corner { position: absolute; right: 16px; top: 14px; background: rgba(0,0
 #roomcount small { font-weight: 400; color: #c9b8ff; margin-left: 4px; }
 #btn-special.cooling { filter: grayscale(.7) brightness(.65); }
 #special-cd { position: absolute; inset: 0; border-radius: 50%; font-style: normal; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 900; text-shadow: 0 2px 0 #000; pointer-events: none; }
+.phase.next { background: #d42020; box-shadow: 0 4px 0 #6a0a0a, 0 0 14px #ff5a3a; animation: pulse 1.2s infinite; }
+.phase.done { background: #5a2a2a; box-shadow: 0 4px 0 #2a1010; }
+@keyframes pulse { 50% { transform: scale(1.06); } }
