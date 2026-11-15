@@ -214,13 +214,22 @@ export class Game {
     this.running = false;
     humStop();
     stopAmbience();
+    if (this.deathTimer) { clearTimeout(this.deathTimer); this.deathTimer = null; }
+    this.dying = false;
     if (this.scene) {
+      // libera a memória da placa de vídeo (no celular, recomeçar muitas vezes podia travar)
+      const geos = new Set();
       this.scene.traverse((o) => {
-        if (o.isMesh && Array.isArray(o.material)) o.material.forEach((m) => { if (m.map && m.map.isCanvasTexture && m.map.image.width > 256) m.map.dispose(); });
+        if (o.geometry) geos.add(o.geometry);
+        const mats = [].concat(o.material || []);
+        mats.forEach((m) => { if (m.map && m.map.isCanvasTexture && m.map.image && m.map.image.width > 256) m.map.dispose(); });
       });
+      geos.forEach((g) => g.dispose());
+      if (this.renderer.renderLists) this.renderer.renderLists.dispose();
     }
     this.scene = null;
     this.room = null;
+    this.ui.clearDialog();
     this.setFog(false);
     this.ui.bossBar(null);
   }
@@ -328,9 +337,9 @@ export class Game {
   }
 
   // troca quem o jogador controla (rostinho no canto ou 3 toques no botão do amigo)
-  switchHero(auto = false, target = null) {
+  switchHero(auto = false, target = null, force = false) {
     const list = this.helpers();
-    if (!list.length || this.cine || this.trans) return false;
+    if (!list.length || (!force && (this.cine || this.trans))) return false;
     let other = target && list.includes(target) ? target : null;
     if (!other) {
       const i = this.heroes.indexOf(this.player);
@@ -757,6 +766,14 @@ export class Game {
     if (p.hp <= 0) this.playerDown();
   }
 
+  // todos desmaiaram: recomeça a fase (chamado uma vez só, mesmo que algo atrase)
+  restartAfterDeath() {
+    if (!this.dying) return;
+    this.dying = false;
+    if (this.deathTimer) { clearTimeout(this.deathTimer); this.deathTimer = null; }
+    if (this.running && this.onDeath) this.onDeath(this.result, this.inv);
+  }
+
   playerDown() {
     const p = this.player;
     p.dead = true; p.hp = 0;
@@ -769,15 +786,16 @@ export class Game {
       p.dead = false;
       p.fainted = true;
       p.hp = 0;
-      this.switchHero(true);
-      this.ui.bigText(`${p.name} desmaiou! ${other.name} assume!`, 1800);
+      this.switchHero(true, other, true);
+      this.ui.bigText(`${p.name} desmaiou! ${this.player.name} assume!`, 1800);
       this.refreshPortraits();
       return;
     }
     if (!this.isPrologue) {
       this.ui.bigText(this.heroes.length > 2 ? 'Todos desmaiaram... a fase recomeça!' : this.heroes.length > 1 ? 'Os dois desmaiaram... a fase recomeça!' : 'O Lunerb desmaiou... a fase recomeça!', 2200);
       this.frozen = true;
-      setTimeout(() => { if (this.running && this.onDeath) this.onDeath(this.result, this.inv); }, 2300);
+      this.dying = true;
+      this.deathTimer = setTimeout(() => this.restartAfterDeath(), 2300);
       return;
     }
     this.ui.bigText('Os monstros pegaram o Lucas!', 1600);

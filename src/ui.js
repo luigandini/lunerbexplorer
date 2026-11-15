@@ -101,6 +101,13 @@ export class UI {
 
   dialog(lines, done) {
     if (!lines || !lines.length) { done && done(); return; }
+    // já tem uma conversa aberta: junta as falas e guarda os dois finais (nada se perde)
+    if (this.dialogQueue) {
+      const q = this.dialogQueue, prev = q.done;
+      q.lines.push(...lines);
+      q.done = () => { if (prev) prev(); if (done) done(); };
+      return;
+    }
     this.dialogQueue = { lines: lines.slice(), done };
     this.overlay('dialog', true);
     this.renderDialog();
@@ -121,6 +128,12 @@ export class UI {
     this.dialogQueue = null;
     this.overlay('dialog', false);
     done && done();
+  }
+
+  // fecha qualquer conversa sem chamar o final (usado ao sair ou recomeçar a fase)
+  clearDialog() {
+    this.dialogQueue = null;
+    this.overlay('dialog', false);
   }
 
   get dialogOpen() { return !!this.dialogQueue || !!this.choiceOpen; }

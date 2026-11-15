@@ -23,6 +23,8 @@ renderer.toneMappingExposure = 1.1;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+// se o celular apagar a placa de vídeo (falta de memória), recarrega a página: o progresso fica salvo
+canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); try { writeSave(save); } catch { /* ok */ } setTimeout(() => location.reload(), 300); });
 const ui = new UI();
 const input = new Input(document.body);
 const game = new Game({ renderer, ui, input });
@@ -382,12 +384,34 @@ addEventListener('resize', () => {
 });
 
 let last = performance.now();
+let crashes = 0, lastError = null, stuckT = 0;
+// vigia: se o jogo ficar parado sem motivo (sem conversa, cena, loja ou troca de sala), destrava
+function watchdog(dt) {
+  const busy = ui.dialogOpen || game.cine || game.trans || game.paused || game.ended || !$('scr-shop').classList.contains('hidden');
+  if (game.frozen && !busy) stuckT += dt; else stuckT = 0;
+  if (stuckT > 4) {
+    stuckT = 0;
+    if (game.dying) game.restartAfterDeath();
+    else { game.frozen = false; input.reset(); console.warn('[lunerb] destravado pelo vigia'); }
+  }
+}
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const realDt = Math.min(0.5, (now - last) / 1000);
+  const dt = Math.min(0.05, realDt);
   last = now;
   if (mode === 'game' && game.running) {
-    if (!ui.dialogOpen) game.update(dt); else { game.animate(0); game.updateCamera(dt); }
-    game.render();
+    try {
+      if (!ui.dialogOpen) game.update(dt); else { game.animate(0); game.updateCamera(dt); }
+      game.render();
+      watchdog(realDt);
+      crashes = 0;
+    } catch (err) {
+      // um erro não pode parar o jogo: registra e tenta seguir; se repetir muito, recomeça a fase
+      console.error('[lunerb]', err);
+      lastError = String(err && err.stack || err);
+      crashes++;
+      if (crashes > 30 && game.def) { crashes = 0; ui.toast('Ops! Algo deu errado. Recomeçando a fase...'); const id = game.def.id; game.running = false; startLevel(id); }
+    }
   } else {
     renderer.toneMappingExposure = 1.1;
     updateMenu(dt);
@@ -404,4 +428,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // usado pelo teste automático no navegador
-window.__lunerb = { audioState, game, ui, renderer, menu, get save() { return save; }, startLevel, showMap };
+window.__lunerb = { audioState, game, ui, renderer, menu, get save() { return save; }, startLevel, showMap, get lastError() { return lastError; } };
