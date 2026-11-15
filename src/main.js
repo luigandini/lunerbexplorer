@@ -178,6 +178,11 @@ function updateCoverPose(m) {
   m.cam.updateProjectionMatrix();
   m.island.position.y = Math.sin(m.t * 0.8) * 0.04;
   m.island.rotation.y = Math.sin(m.t * 0.25) * 0.12;
+  if (window.__icone) { // usado só para gerar o ícone do app (tools/icone.mjs)
+    m.island.position.y = 0; m.island.rotation.y = 0;
+    m.cam.position.set(0, 1.2, 4.3); m.cam.lookAt(0, 0.8, 0);
+    m.cam.updateProjectionMatrix();
+  }
   const L = m.heroes.lunerb, F = m.heroes.feligon, D = m.heroes.dait;
   const breathe = Math.sin(m.t * 2) * 0.008;
   // da esquerda para a direita, como na imagem: Feligon, Dait, Lunerb
