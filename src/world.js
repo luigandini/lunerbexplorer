@@ -23,6 +23,7 @@ function groundTexture(room, theme, r) {
       let name;
       if (theme === 'castle') name = t === ',' ? 'cobbleMoss' : 'cobble';
       else if (theme === 'pipes') name = t === ',' ? 'metalRust' : 'metal';
+      else if (theme === 'tower') name = t === ',' || t === 'y' ? 'stoneDark' : 'planks';
       else if (theme === 'swamp') name = t === ',' || t === 'Y' || t === 'U' ? 'grassDark' : 'mud';
       else name = (t === '.' || t === 'X' || t === 'E') ? 'dirt' : 'grass';
       const img = tex(name).image;
@@ -32,7 +33,7 @@ function groundTexture(room, theme, r) {
   // bordas suaves: manchas de grama sobre a trilha / musgo sobre a pedra
   for (let i = 0; i < room.w * room.h * 0.6; i++) {
     const x = r() * c.width, y = r() * c.height;
-    ctx.fillStyle = theme === 'forest' ? `rgba(70,${110 + r() * 40},45,0.35)` : theme === 'swamp' ? `rgba(40,${70 + r() * 40},30,0.35)` : theme === 'pipes' ? `rgba(${110 + r() * 40},70,30,0.12)` : `rgba(60,${80 + r() * 30},50,0.18)`;
+    ctx.fillStyle = theme === 'forest' ? `rgba(70,${110 + r() * 40},45,0.35)` : theme === 'swamp' ? `rgba(40,${70 + r() * 40},30,0.35)` : theme === 'pipes' ? `rgba(${110 + r() * 40},70,30,0.12)` : theme === 'tower' ? `rgba(${90 + r() * 40},60,${120 + r() * 50},0.12)` : `rgba(60,${80 + r() * 30},50,0.18)`;
     ctx.beginPath(); ctx.ellipse(x, y, 4 + r() * 10, 3 + r() * 7, r() * 3, 0, 7); ctx.fill();
   }
   const g = ctx.createRadialGradient(c.width / 2, c.height / 2, Math.min(c.width, c.height) * 0.3, c.width / 2, c.height / 2, Math.max(c.width, c.height) * 0.7);
@@ -90,6 +91,8 @@ function shared() {
       under: new THREE.MeshLambertMaterial({ color: 0x3d3940 }),
       brick: new THREE.MeshLambertMaterial({ map: tex('brick') }),
       copper: new THREE.MeshLambertMaterial({ color: 0xd8843a }),
+      towerWall: new THREE.MeshLambertMaterial({ map: tex('stoneDark'), color: 0xc8b8e8 }),
+      vial: new THREE.MeshBasicMaterial({ color: 0xb070ff }),
       gas: new THREE.MeshBasicMaterial({ color: 0x9dff4a, transparent: true, opacity: 0.28, depthWrite: false }),
       blockGeo: rb(1, 1, 1, 0.14, 2),
       wallGeo: rb(0.98, 1.1, 0.98, 0.09, 2),
@@ -120,7 +123,7 @@ export function buildRoom(room, theme, offset, seed) {
 
   // bordas da ilha: blocos de pedra empilhados + musgo pendurado
   const cliff = [], drips = [];
-  const base = theme === 'forest' ? 0x9a948f : theme === 'swamp' ? 0x7a7466 : theme === 'pipes' ? 0x8a7a70 : 0x8c8690;
+  const base = theme === 'forest' ? 0x9a948f : theme === 'swamp' ? 0x7a7466 : theme === 'pipes' ? 0x8a7a70 : theme === 'tower' ? 0x7a7088 : 0x8c8690;
   const shade = (k) => new THREE.Color(base).multiplyScalar(k).getHex();
   const edge = (x, z, nx, nz) => {
     const k = 0.8 + r() * 0.25;
@@ -181,6 +184,12 @@ export function buildRoom(room, theme, offset, seed) {
           else if (t === ',' && v < 0.2) P.grassTuft(statics, cx + (r() - 0.5) * 0.6, cz + (r() - 0.5) * 0.6, r);
           else if (v < 0.25) P.mushroom(statics, cx + (r() - 0.5) * 0.6, cz + (r() - 0.5) * 0.6, r);
           else if (v < 0.3) P.bones(statics, cx, cz, r);
+        } else if (theme === 'tower') {
+          const nearWall = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (room.tiles[y + dy] || [])[x + dx] === '#');
+          if (nearWall && v < 0.1) P.shelf(statics, cx, cz, r);
+          else if (nearWall && v < 0.14) P.cauldron(statics, cx, cz, r);
+          else if (nearWall && v < 0.18) P.gearProp(statics, cx, cz, r);
+          else if (v < 0.22) P.pebbles(statics, cx, cz, r);
         } else if (theme === 'pipes') {
           const nearWall = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (room.tiles[y + dy] || [])[x + dx] === '#');
           if (nearWall && v < 0.12) P.pipe(statics, cx + (r() - 0.5) * 0.4, cz + (r() - 0.5) * 0.4, r);
@@ -210,10 +219,10 @@ export function buildRoom(room, theme, offset, seed) {
     list.forEach((it, i) => { const k = `${it.tx},${it.ty}`; if (!wallIndex.has(k)) wallIndex.set(k, []); wallIndex.get(k).push({ mesh, i }); });
     group.add(mesh);
   };
-  const wallMat = theme === 'pipes' ? S.brick : S.wall;
+  const wallMat = theme === 'pipes' ? S.brick : theme === 'tower' ? S.towerWall : S.wall;
   addWalls(S.wallGeo, wallMat, walls);
   addWalls(S.lowWallGeo, wallMat, lows);
-  addWalls(S.capGeo, theme === 'pipes' ? S.copper : S.moss, caps, { receive: false });
+  addWalls(S.capGeo, theme === 'pipes' ? S.copper : theme === 'tower' ? S.towerWall : S.moss, caps, { receive: false });
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   const breakWall = (x, y) => {
     const list = wallIndex.get(`${x},${y}`);
@@ -242,10 +251,19 @@ export function buildRoom(room, theme, offset, seed) {
       gas.push(m);
     }
   }
+  // engrenagens do chão (giram e empurram quem pisa)
+  const gears = [];
+  for (const q of room.gears) {
+    const g = P.floorGear();
+    g.position.set(q.x + 0.5, 0, q.y + 0.5);
+    g.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+    group.add(g);
+    gears.push({ g, tx: q.x, ty: q.y });
+  }
   // pontes que afundam (cada tábua separada para poder afundar)
   const bridges = new Map();
   for (const b of room.bridges) {
-    const g = P.plank(theme === 'pipes');
+    const g = P.plank(theme === 'pipes' || theme === 'tower');
     g.position.set(b.x + 0.5, 0, b.y + 0.5);
     g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     group.add(g);
@@ -387,7 +405,7 @@ export function buildRoom(room, theme, offset, seed) {
   }
 
   return {
-    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall, breakProp, cocoon, openVine, bridges, gas, cage,
+    group, torches, cracks, checkpoints, chests, hearts, portal, exit, back, merchant, breakWall, breakProp, cocoon, openVine, bridges, gas, cage, gears,
     center: new THREE.Vector3(offset.x + W / 2, 0, offset.z + H / 2),
   };
 }

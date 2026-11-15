@@ -15,12 +15,13 @@
 //             c  cogumelo-espora   e  planta-espinho   K  chefão da fase   F  casulo (Feligon preso)
 //   Pântano:  b  ponte que afunda (passe rápido!)   q  gás tóxico (só o Dait respira)
 //             p  sapinho do lodo   o  bolha de lodo (se divide em duas)   Z  jaula (Dait preso)
+//   Torre:    y  engrenagem que gira e empurra   r  robô-ferrugem   i  frasco saltitante (estoura perto)
 
 export const WORLDS = [
   { id: 1, name: 'Fortaleza de Cinzarocha', ready: true },
   { id: 2, name: 'Bosque dos Sussurros', ready: true },
   { id: 3, name: 'Pântano do Lodo Negro', ready: true },
-  { id: 4, name: 'Torre do Alquimista', ready: false },
+  { id: 4, name: 'Torre do Alquimista', ready: true },
 ];
 
 export const LEVELS = [
@@ -536,10 +537,164 @@ export const LEVELS = [
       ] },
     ],
   },
+  {
+    id: 7,
+    kind: 'fase',
+    world: 4,
+    difficulty: 1.9,
+    title: 'A Subida',
+    theme: 'tower',
+    hero: 'lunerb',
+    music: 'tower',
+    ambience: 'tower',
+    weaponReward: 2,
+    boss: 'golem',
+    intro: [
+      { who: 'Dait', text: 'Essa é a Torre do Alquimista. Eu morei aqui... é cheia de engrenagens e armadilhas.' },
+      { who: 'Feligon', text: 'Então a gente sobe tudo e chega no topo!' },
+      { who: 'Lunerb', text: 'Cada degrau me deixa mais perto de casa. Vamos!' },
+    ],
+    rooms: [
+      { name: 'Porão das Engrenagens', map: [
+        '#############',
+        '#P....#...r.#',
+        '#.....#.....#',
+        '#..yy...yy..X',
+        '#..yy...yy..#',
+        '#.......r...#',
+        '#.T..i...T..#',
+        '#.....B.....#',
+        '#############',
+      ] },
+      { name: 'Corredor dos Frascos', map: [
+        '#############',
+        '#S#..i....i.#',
+        '#.Q.........#',
+        '####.~~~~~..#',
+        'N....bbbbb..X',
+        '#....~~~~~..#',
+        '#.C..~~~~~.i#',
+        '#....yy.r.H.#',
+        '#############',
+      ] },
+      { name: 'Biblioteca Torta', loot: 'turbina', map: [
+        '#############',
+        '#..r....#..J#',
+        '#.##.##.#...#',
+        'N.......y...#',
+        '#.##.##.#..r#',
+        '#...........X',
+        '#.##i##.#...#',
+        '#.V.....#.B.#',
+        '#############',
+      ] },
+      { name: 'Sala dos Caldeirões', map: [
+        '#############',
+        '#....LL..i.r#',
+        '#....LL..C..#',
+        'N....LL.....#',
+        '#.......r...#',
+        '#....LL..i..X',
+        '#....LL.....#',
+        '#.H..LL...B.#',
+        '#############',
+      ] },
+      { name: 'Oficina do Golem', map: [
+        '###############',
+        '#.....T...T...#',
+        '#..y.......y..#',
+        '#.............#',
+        '#.............#',
+        'N......K......E',
+        '#.............#',
+        '#.............#',
+        '#..y.......y..#',
+        '#.....T...T...#',
+        '###############',
+      ] },
+    ],
+  },
+  {
+    id: 8,
+    kind: 'fase',
+    world: 4,
+    difficulty: 2.0,
+    title: 'O Topo da Torre',
+    theme: 'tower',
+    hero: 'lunerb',
+    music: 'tower',
+    ambience: 'tower',
+    weaponReward: 2,
+    boss: 'morgrave',
+    intro: [
+      { who: 'Dait', text: 'O laboratório do Morgrave fica lá no topo. É de lá que sai todo o lodo.' },
+      { who: 'Lunerb', text: 'Depois dele... é só voltar pra casa.' },
+      { who: 'Feligon', text: 'Os três juntos. Ninguém fica pra trás!' },
+    ],
+    rooms: [
+      { name: 'Escadaria em Espiral', map: [
+        '#############',
+        '#P..#....i..#',
+        '#...#.##....#',
+        '#...y.##..r.X',
+        '#..##...yy..#',
+        '#.......##..#',
+        '#.r..i..##.B#',
+        '#....T......#',
+        '#############',
+      ] },
+      { name: 'Laboratório', map: [
+        '#############',
+        '#..~~~..r.QS#',
+        '#..bbb....QQ#',
+        'N..~~~..i...#',
+        '#.......~~..#',
+        '#....C..bb..X',
+        '#.......~~.i#',
+        '#..T..rB....#',
+        '#############',
+      ] },
+      { name: 'Galeria das Poções', fog: true, loot: 'superbomba', map: [
+        '#############',
+        '#.....r.#..J#',
+        '#...##..#...#',
+        'N...##..y..i#',
+        '#.......#...#',
+        '#....##.....X',
+        '#....##..r..#',
+        '#.H..i..V...#',
+        '#############',
+      ] },
+      { name: 'Portão do Alquimista', map: [
+        '#############',
+        '#...r.T.....#',
+        '#.........r.#',
+        'N...........#',
+        '#....yyy....#',
+        '#.........i.X',
+        '#.....C.....#',
+        '#..iB...H...#',
+        '#############',
+      ] },
+      { name: 'Topo da Torre', map: [
+        '###############',
+        '#.............#',
+        '#..#.......#..#',
+        '#.............#',
+        '#.............#',
+        'N......K......E',
+        '#.............#',
+        '#.............#',
+        '#..#.......#..#',
+        '#.............#',
+        '###############',
+      ] },
+    ],
+  },
 ];
 
 export const SOLID = new Set(['#', 'T', 'Q', 'Y', 'R', 'U', '~', 'D']);
-export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego', c: 'cogumelo', e: 'espinho', p: 'sapinho', o: 'bolha' };
+export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego', c: 'cogumelo', e: 'espinho', p: 'sapinho', o: 'bolha', r: 'robo', i: 'frasco' };
 export const ROOM_SPACING = 22; // distância entre as maquetes no "espaço"
 
 export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
@@ -547,7 +702,7 @@ export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
   const w = rows[0].length;
   const out = {
     index, w, h, tiles: [], entry: null, isStart: false, portal: null, exit: null,
-    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null, vines: [], bridges: [], gas: [], cage: null,
+    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null, vines: [], bridges: [], gas: [], cage: null, gears: [],
   };
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -570,6 +725,7 @@ export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
       else if (c === 'Z') { out.cage = { x, y }; tile = '.'; }
       else if (c === 'b') { out.bridges.push({ x, y }); }
       else if (c === 'q') { out.gas.push({ x, y }); }
+      else if (c === 'y') { out.gears.push({ x, y }); }
       else if (c === 'C') { out.checkpoints.push({ x, y }); }
       else if (c === 'T') { out.torches.push({ x, y }); }
       else if (c === 'Q') { out.cracks.push({ x, y }); }

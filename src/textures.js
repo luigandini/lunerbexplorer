@@ -183,6 +183,37 @@ function metal(seed = 19, rust = false) {
   return toTex(c);
 }
 
+// Assoalho de tábuas (torre do alquimista), 256px para o chão das salas
+function planks(seed = 31) {
+  const S = 256, [c, ctx] = canvas(S), r = rng(seed);
+  for (let i = 0; i < 8; i++) {
+    let x = -r() * 60;
+    while (x < S) {
+      const w = 60 + r() * 70, k = 0.75 + r() * 0.35;
+      ctx.fillStyle = `rgb(${Math.floor(110 * k)},${Math.floor(72 * k)},${Math.floor(48 * k)})`;
+      ctx.fillRect(x, i * 32, w, 31);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(x + w - 2, i * 32, 2, 32);
+      for (let j = 0; j < 3; j++) { ctx.strokeStyle = 'rgba(50,28,14,0.35)'; ctx.beginPath(); const y = i * 32 + 6 + r() * 20; ctx.moveTo(x, y); ctx.bezierCurveTo(x + w / 3, y + 2, x + w * 0.66, y - 2, x + w, y); ctx.stroke(); }
+      x += w;
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, i * 32 + 30, S, 2);
+  }
+  noise(ctx, S, r, 1500);
+  return toTex(c);
+}
+
+// Céu de pôr do sol (cena final)
+function sunset() {
+  const [c, ctx] = canvas(512);
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#2a2a6a'); g.addColorStop(0.45, '#c8507a'); g.addColorStop(0.75, '#ff9a4a'); g.addColorStop(1, '#ffd27a');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 512);
+  ctx.fillStyle = 'rgba(255,240,200,0.9)'; ctx.beginPath(); ctx.arc(256, 380, 60, 0, 7); ctx.fill();
+  const r = rng(41);
+  for (let i = 0; i < 40; i++) { ctx.fillStyle = `rgba(255,255,255,${0.2 + r() * 0.5})`; ctx.fillRect(r() * 512, r() * 180, 1.5, 1.5); }
+  return toTex(c, false);
+}
+
 // Fundo infinito escuro (degradê com estrelinhas)
 function background(top = '#1d2a36', bottom = '#06080d') {
   const [c, ctx] = canvas(512);
@@ -214,6 +245,9 @@ const MAKERS = {
   brick: () => stoneBlocks(29, [128, 84, 68]),
   bgSwamp: () => background('#24342a', '#040806'),
   bgPipes: () => background('#2c2a24', '#060504'),
+  planks: () => planks(),
+  bgTower: () => background('#2e2244', '#07040c'),
+  bgSunset: () => sunset(),
   bgMenu: () => background('#2a2f45', '#07060b'),
 };
 

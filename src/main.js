@@ -79,19 +79,32 @@ function buildMenuScene() {
   deco.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   island.add(deco);
 
-  const heroes = { lunerb: buildHero('lunerb'), lucas: buildHero('lucas') };
+  const heroes = { lunerb: buildHero('lunerb'), lucas: buildHero('lucas'), feligon: buildHero('feligon'), dait: buildHero('dait') };
   for (const h of Object.values(heroes)) { h.root.visible = false; island.add(h.root); }
+  // casa do Lucas (só aparece no final)
+  const home = Props.house();
+  home.group.position.set(0.15, 0, -0.6);
+  home.group.scale.setScalar(0.95);
+  home.group.visible = false;
+  home.group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  island.add(home.group);
   const bolts = [];
   for (let i = 0; i < 12; i++) {
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x9a4bff : 0x222222 }));
     island.add(b); bolts.push(b);
   }
-  return { scene, cam, island, heroes, bolts, pose: 'title', t: 0, rim };
+  return { scene, cam, island, heroes, bolts, pose: 'title', t: 0, rim, home, deco, poseT: 0 };
 }
 
 function setPose(pose, hero = 'lunerb') {
   menu.pose = pose;
-  for (const [k, h] of Object.entries(menu.heroes)) h.root.visible = k === hero;
+  menu.poseT = 0;
+  const final = pose === 'final';
+  for (const [k, h] of Object.entries(menu.heroes)) h.root.visible = final ? k !== 'lucas' : k === hero;
+  menu.home.group.visible = final;
+  menu.home.door.rotation.y = 0;
+  menu.scene.background = tex(final ? 'bgSunset' : 'bgMenu');
+  menu.rim.color.setHex(final ? 0xffa050 : 0xff5040);
   const L = menu.heroes.lunerb;
   L.guns[1].visible = save.weapons >= 1 || pose === 'title';
   L.guns[0].visible = save.weapons >= 2 || pose === 'title';
@@ -100,6 +113,8 @@ function setPose(pose, hero = 'lunerb') {
 function updateMenu(dt) {
   const m = menu;
   m.t += dt;
+  m.poseT += dt;
+  if (m.pose === 'final') return updateFinalPose(m);
   const aspect = innerWidth / innerHeight;
   // a maquete fica à esquerda na tela inicial e no centro nas outras
   const left = m.pose === 'title';
@@ -126,6 +141,35 @@ function updateMenu(dt) {
     const a = m.t * 2.5 + i * 0.52;
     b.position.set(Math.cos(a) * 0.55, 0.3 + ((m.t * 0.9 + i * 0.3) % 1.4), 0.1 + Math.sin(a) * 0.55);
   });
+}
+
+// cena final: os três amigos chegam e o Lunerb abre a porta de casa
+function updateFinalPose(m) {
+  m.cam.aspect = innerWidth / innerHeight;
+  m.cam.position.set(0.2, 2.2, 6.0); m.cam.lookAt(0.1, 0.45, -0.2);
+  m.cam.updateProjectionMatrix();
+  m.island.position.y = Math.sin(m.t * 0.8) * 0.05;
+  m.island.rotation.y = -0.25 + Math.sin(m.t * 0.2) * 0.08;
+  const t = m.poseT;
+  const L = m.heroes.lunerb, F = m.heroes.feligon, D = m.heroes.dait;
+  const walk = Math.min(1, t / 2.5);
+  L.root.position.set(-0.9 + 1.1 * walk, 0, 0.55 - 0.45 * walk);
+  L.root.rotation.y = walk < 1 ? 0.9 : Math.PI + 0.1;
+  const sw = walk < 1 ? Math.sin(t * 10) * 0.7 : 0;
+  L.legs[0].rotation.x = sw; L.legs[1].rotation.x = -sw;
+  L.arms[0].rotation.set(-sw, 0, 0);
+  L.arms[1].rotation.set(walk >= 1 && t > 3 ? -1.4 : sw, 0, 0);
+  m.home.door.rotation.y = -Math.min(1.7, Math.max(0, t - 3.2) * 1.4);
+  F.root.position.set(-0.75, 0, 0.75); F.root.rotation.y = 0.5;
+  D.root.position.set(-1.3, 0, 0.35); D.root.rotation.y = 0.6;
+  for (const [h, ph] of [[F, 0], [D, 1.5]]) {
+    h.legs[0].rotation.x = 0; h.legs[1].rotation.x = 0;
+    h.arms[0].rotation.set(0, 0, 0);
+    h.arms[1].rotation.set(-2.6 + Math.sin(m.t * 6 + ph) * 0.35, 0, 0); // dando tchau
+    h.body.position.y = Math.abs(Math.sin(m.t * 3 + ph)) * 0.02;
+  }
+  for (const h of [L, F, D]) { h.guns.forEach((g) => (g.visible = h === L)); }
+  m.bolts.forEach((b) => (b.visible = false));
 }
 
 // ---------------- telas ----------------
@@ -233,17 +277,25 @@ const ENDING_W3 = [
   { text: 'Agora são três: Lunerb, Feligon e Dait, que conhece todos os segredos do Morgrave.' },
   { text: 'Lá longe, no alto de uma torre torta, uma luz verde pisca. É lá que o lodo nasce.' },
 ];
+const ENDING_FINAL = [
+  { text: 'Os três amigos juntaram seus poderes, e o Lodo Negro virou água limpa.' },
+  { text: 'O Morgrave voltou a ser um velhinho gentil e prometeu limpar todos os rios.' },
+  { text: 'Feligon e Dait acompanharam o Lunerb pela floresta, até o pôr do sol.' },
+  { text: 'E lá estava ela: a casa do Lucas, com a luz acesa, esperando por ele.' },
+  { text: 'O Lunerb abriu a porta... e finalmente estava em casa.' },
+];
 const ENDINGS = {
   2: { world: 1, slides: ENDING_W1, next: 'Continua no Mundo 2: Bosque dos Sussurros...' },
   4: { world: 2, slides: ENDING_W2, next: 'Continua no Mundo 3: Pântano do Lodo Negro...' },
   6: { world: 3, slides: ENDING_W3, next: 'Continua no Mundo 4: Torre do Alquimista...' },
+  8: { world: 4, slides: ENDING_FINAL, next: '🏠 FIM — Obrigado por jogar!', final: true },
 };
 let story = null;
-function playStory(slides, done) {
+function playStory(slides, done, pose = 'hero') {
   mode = 'menu';
   ui.gameMode(false);
   ui.show('scr-story');
-  setPose('hero');
+  setPose(pose);
   story = { slides, i: 0, done };
   $('story-text').textContent = slides[0].text;
 }
@@ -305,19 +357,20 @@ function levelDone(id, res) {
     sfx('clique');
     if (endInfo) {
       playMusic('ending');
-      playStory(endInfo.slides, () => { save.endings = { ...save.endings, [endInfo.world]: true }; save.endingSeen = true; writeSave(save); showCredits(endInfo.next, nextId); });
+      playStory(endInfo.slides, () => { save.endings = { ...save.endings, [endInfo.world]: true }; save.endingSeen = true; writeSave(save); showCredits(endInfo.next, nextId, !!endInfo.final); }, endInfo.final ? 'final' : 'hero');
     } else if (nextId) startLevel(nextId);
     else showMap();
   };
   $('btn-res-map').onclick = () => { sfx('clique'); showMap(); };
 }
 
-function showCredits(next, nextId = null) {
+function showCredits(next, nextId = null, final = false) {
   if (next) document.querySelector('#scr-credits .soon').textContent = next;
+  $('scr-credits').classList.toggle('final', final);
   $('btn-credits-ok').textContent = nextId ? 'Continuar a aventura ▶' : 'Voltar ao mapa';
   $('btn-credits-ok').onclick = () => { sfx('clique'); if (nextId) startLevel(nextId); else showMap(); };
   ui.show('scr-credits');
-  setPose('hero');
+  setPose(final ? 'final' : 'hero');
   playMusic('ending');
 }
 

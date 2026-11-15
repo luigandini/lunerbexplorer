@@ -41,7 +41,7 @@ test('sem anúncios, sem rastreamento, sem login', () => {
 
 test('todo arquivo de código está no modo offline', () => {
   const sw = read('sw.js');
-  for (const f of ['main', 'game', 'world', 'models', 'fx', 'geo', 'textures', 'props', 'inventory', 'input', 'ui', 'audio', 'levels', 'progress', 'save', 'mundo3']) assert.ok(sw.includes(`'src/${f}.js'`), `sw.js sem src/${f}.js`);
+  for (const f of ['main', 'game', 'world', 'models', 'fx', 'geo', 'textures', 'props', 'inventory', 'input', 'ui', 'audio', 'levels', 'progress', 'save', 'mundo3', 'mundo4']) assert.ok(sw.includes(`'src/${f}.js'`), `sw.js sem src/${f}.js`);
 });
 
 test('estilos do mapa não brigam com os da conversa (classe .next)', () => {

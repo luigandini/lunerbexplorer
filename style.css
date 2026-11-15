@@ -107,6 +107,8 @@ button.corner { position: absolute; right: 16px; top: 14px; background: rgba(0,0
 .credits-roll p { margin: 6px 0; }
 .small-c { font-size: 14px; color: #bbb; }
 .soon { color: #9fe0ff; font-style: italic; }
+#scr-credits.final .credits-roll { margin-left: auto; margin-right: 4vw; background: rgba(20,8,20,.55); }
+#scr-credits.final .soon { font-size: 22px; color: #ffe08a; font-style: normal; font-weight: bold; }
 #rotate { display: none; position: fixed; inset: 0; background: #07060b; z-index: 99; align-items: center; justify-content: center; text-align: center; font-size: 60px; }
 #rotate p { font-size: 20px; }
 @media (orientation: portrait) { #rotate { display: flex; } }

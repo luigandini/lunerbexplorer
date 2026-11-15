@@ -56,6 +56,7 @@ npm run smoke     # abre o jogo num Chrome de verdade, joga um pouco e tira foto
 node tools/smoke-armas.mjs   # testa bombas, choque, turbina, loja, voltar de sala e morte
 node tools/smoke-mundo2.mjs  # testa o Mundo 2, a Mãe-Teia, o Feligon e o Ancião Oco
 node tools/smoke-mundo3.mjs  # testa pontes, névoa, gás, Sapo-Lodo Rei, resgate do Dait e Hidra
+node tools/smoke-mundo4.mjs  # testa a torre, Golem, Morgrave nas 3 etapas, golpe final e a cena final
 node tools/smoke-desmaio.mjs  # testa desmaios em todas as situações, mapa e destravamento
 node tools/robo.mjs 40       # robô que joga todas as fases apertando botões ao acaso (40 s por fase)
 ```

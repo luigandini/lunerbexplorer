@@ -505,3 +505,132 @@ export function buildJaula() {
   g.add(bars);
   return { group: g, bars, frame };
 }
+
+// ---------- Mundo 4: Torre do Alquimista ----------
+
+// Robô-ferrugem: anda duro, dá bote; quando derrotado, "desliga"
+export function buildRobo() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  part(body, rb(0.36, 0.34, 0.26, 0.06), 0xb8642a, 'lit', 0, 0.52, 0);
+  part(body, rb(0.2, 0.14, 0.02, 0.02), 0x3a2a20, 'lit', 0, 0.55, 0.135);
+  part(body, sphere(0.035, 6, 4), 0xff3a2a, 'glow', -0.05, 0.56, 0.15);
+  part(body, sphere(0.035, 6, 4), 0x7dff3a, 'glow', 0.05, 0.56, 0.15);
+  const head = pivot(body, 0, 0.78, 0);
+  part(head, rb(0.26, 0.2, 0.22, 0.06), 0xc8743a, 'lit', 0, 0, 0);
+  part(head, sphere(0.06, 10, 8), 0xffd23a, 'glow', 0, 0.01, 0.11);
+  part(head, cylinder(0.01, 0.01, 0.14, 4), 0x5a5a5a, 'lit', 0.06, 0.16, 0);
+  part(head, sphere(0.03, 6, 4), 0xff3a2a, 'glow', 0.06, 0.24, 0);
+  const legs = [], arms = [];
+  for (const sx of [-0.1, 0.1]) {
+    const leg = pivot(body, sx, 0.36, 0);
+    part(leg, rb(0.1, 0.3, 0.12, 0.03), 0x8a4a22, 'lit', 0, -0.15, 0);
+    part(leg, rb(0.13, 0.06, 0.17, 0.02), 0x4a4a4e, 'lit', 0, -0.3, 0.02);
+    legs.push(leg);
+  }
+  for (const sx of [-0.23, 0.23]) {
+    const arm = pivot(body, sx, 0.64, 0);
+    part(arm, cylinder(0.035, 0.035, 0.3, 6), 0x6a6a6e, 'lit', 0, -0.14, 0);
+    part(arm, rb(0.09, 0.09, 0.09, 0.02), 0xb8642a, 'lit', 0, -0.3, 0);
+    arms.push(arm);
+  }
+  bake(root);
+  const armorGroup = new THREE.Group();
+  body.add(armorGroup);
+  part(armorGroup, rb(0.4, 0.12, 0.3, 0.03), 0x7a7a80, 'metal', 0, 0.68, 0);
+  part(armorGroup, rb(0.3, 0.06, 0.25, 0.02), 0x7a7a80, 'metal', 0, 0.9, 0);
+  return { root, body, head, legs, arms, armorGroup };
+}
+
+// Frasco saltitante: poção viva que pula e estoura perto do herói
+export function buildFrasco() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  part(body, cylinder(0.05, 0.06, 0.08, 8), 0xb08a5a, 'lit', 0, 0.48, 0);
+  part(body, sphere(0.15, 12, 10), 0xd06aff, 'glow', 0, 0.24, 0);
+  part(body, sphere(0.035, 6, 4), 0x1a1020, 'lit', -0.06, 0.3, 0.17);
+  part(body, sphere(0.035, 6, 4), 0x1a1020, 'lit', 0.06, 0.3, 0.17);
+  for (const sx of [-0.08, 0.08]) part(body, rb(0.07, 0.04, 0.09, 0.02), 0x4a3a5a, 'lit', sx, 0.03, 0.02);
+  bake(root);
+  const glass = new THREE.Mesh(sphere(0.21, 14, 10), material(0xeedcff, 'lit', 0.35));
+  glass.position.y = 0.25;
+  body.add(glass);
+  const neck = new THREE.Mesh(cylinder(0.06, 0.09, 0.12, 8), material(0xeedcff, 'lit', 0.35));
+  neck.position.y = 0.43;
+  body.add(neck);
+  return { root, body, legs: [] };
+}
+
+// Golem de Engrenagens: robô gigante com engrenagem no peito
+export function buildGolem() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  part(body, rb(0.6, 0.5, 0.42, 0.08), 0x6a6e76, 'lit', 0, 0.75, 0);
+  part(body, rb(0.4, 0.22, 0.36, 0.06), 0x55585e, 'lit', 0, 0.42, 0);
+  const head = pivot(body, 0, 1.1, 0);
+  part(head, rb(0.34, 0.24, 0.3, 0.06), 0x7a7e86, 'lit', 0, 0, 0);
+  part(head, rb(0.24, 0.06, 0.04, 0.02), 0xff5a2a, 'glow', 0, 0.02, 0.15);
+  part(head, cone(0.04, 0.12, 5), 0x9a7a4a, 'metal', -0.12, 0.17, 0);
+  part(head, cone(0.04, 0.12, 5), 0x9a7a4a, 'metal', 0.12, 0.17, 0);
+  const legs = [], arms = [];
+  for (const sx of [-0.15, 0.15]) {
+    const leg = pivot(body, sx, 0.34, 0);
+    part(leg, rb(0.16, 0.32, 0.18, 0.04), 0x55585e, 'lit', 0, -0.16, 0);
+    part(leg, rb(0.2, 0.08, 0.26, 0.03), 0x3a3c40, 'lit', 0, -0.32, 0.03);
+    legs.push(leg);
+  }
+  for (const sx of [-0.4, 0.4]) {
+    const arm = pivot(body, sx, 0.92, 0);
+    part(arm, sphere(0.1, 8, 6), 0x9a7a4a, 'metal', 0, 0, 0);
+    part(arm, rb(0.14, 0.38, 0.14, 0.04), 0x6a6e76, 'lit', 0, -0.22, 0);
+    part(arm, rb(0.2, 0.18, 0.2, 0.05), 0x55585e, 'lit', 0, -0.45, 0);
+    arms.push(arm);
+  }
+  bake(root);
+  const core = new THREE.Group();
+  core.position.set(0, 0.78, 0.22);
+  part(core, cylinder(0.14, 0.14, 0.05, 12), 0xffb03a, 'glow', 0, 0, 0, Math.PI / 2, 0, 0);
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; part(core, rb(0.05, 0.05, 0.05, 0.01), 0xffb03a, 'glow', Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0); }
+  body.add(core);
+  const armorGroup = new THREE.Group();
+  body.add(armorGroup);
+  for (const [x, y, z, w, h] of [[0, 0.8, 0.23, 0.5, 0.36], [-0.32, 0.95, 0, 0.12, 0.3], [0.32, 0.95, 0, 0.12, 0.3], [0, 1.0, -0.22, 0.5, 0.3]]) part(armorGroup, rb(w, h, 0.06, 0.02), 0x9a9ea6, 'metal', x, y, z);
+  return { root, body, head, legs, arms, core, armorGroup };
+}
+
+// Morgrave, o alquimista (corrompido pelo lodo) e a versão boazinha no final
+export function buildMorgrave({ clone = false, good = false } = {}) {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const inner = new THREE.Group();
+  body.add(inner);
+  if (clone) inner.scale.setScalar(1.25);
+  const robe = good ? 0x5a6aa8 : 0x3a2a5a;
+  part(inner, cone(0.26, 0.62, 10), robe, 'lit', 0, 0.31, 0);
+  part(inner, rb(0.3, 0.05, 0.05, 0.02), good ? 0xffd23a : 0x7dff3a, good ? 'lit' : 'glow', 0, 0.36, 0.12);
+  part(inner, sphere(0.14, 12, 10), SKIN, 'lit', 0, 0.72, 0);
+  part(inner, cone(0.11, 0.24, 8), 0xf2f2f2, 'lit', 0, 0.58, 0.07, Math.PI + 0.25, 0, 0);
+  part(inner, sphere(0.03, 6, 4), good ? 0x2a2a2a : 0x9dff3a, good ? 'lit' : 'glow', -0.05, 0.75, 0.12);
+  part(inner, sphere(0.03, 6, 4), good ? 0x2a2a2a : 0x9dff3a, good ? 'lit' : 'glow', 0.05, 0.75, 0.12);
+  part(inner, cylinder(0.2, 0.2, 0.03, 12), robe, 'lit', 0, 0.82, 0);
+  part(inner, cone(0.13, 0.38, 10), robe, 'lit', 0, 1.02, -0.02, -0.15, 0, 0);
+  if (!good) for (const [x, y, z] of [[0.18, 0.2, 0.1], [-0.2, 0.15, 0.05], [0.1, 0.45, -0.18]]) part(inner, sphere(0.04, 6, 4), 0x7dff3a, 'glow', x, y, z);
+  const arms = [];
+  for (const sx of [-0.2, 0.2]) {
+    const arm = pivot(inner, sx, 0.52, 0);
+    part(arm, cylinder(0.04, 0.06, 0.26, 6), robe, 'lit', 0, -0.12, 0);
+    part(arm, sphere(0.04, 6, 4), SKIN, 'lit', 0, -0.26, 0);
+    arms.push(arm);
+  }
+  // cajado: os clones não têm a pedra brilhante (dica para achar o verdadeiro)
+  part(arms[1], cylinder(0.015, 0.015, 0.8, 5), 0x6a4a2a, 'lit', 0.02, -0.1, 0.05);
+  bake(root);
+  const gem = new THREE.Mesh(sphere(0.06, 10, 8), material(clone ? 0x3a3a3a : good ? 0x7ac8ff : 0xffd23a, clone ? 'lit' : 'glow'));
+  gem.position.set(0.02, 0.32, 0.05);
+  arms[1].add(gem);
+  return { root, body, inner, arms, gem, legs: [] };
+}

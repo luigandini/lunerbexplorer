@@ -2,8 +2,9 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { parseLevel, getLevel, SOLID, ROOM_SPACING } from './levels.js';
 import { buildRoom, sharedMaterials } from './world.js';
-import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCoracao, buildCogumelo, buildEspinho, buildMaeTeia, buildAnciao, buildSapinho, buildBolha } from './models.js';
+import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCoracao, buildCogumelo, buildEspinho, buildMaeTeia, buildAnciao, buildSapinho, buildBolha, buildRobo, buildFrasco, buildMorgrave } from './models.js';
 import { Mundo3, hidraGlow } from './mundo3.js';
+import { Mundo4 } from './mundo4.js';
 import { material, applyRim, groundGlow } from './geo.js';
 import { tex } from './textures.js';
 import { FX } from './fx.js';
@@ -34,7 +35,12 @@ const EDEF = {
   sapinho: { hp: 3, armor: 0, speed: 2.7, r: 0.3, aggro: 6.5, drop: 1, hop: true, build: buildSapinho },
   bolha: { hp: 5, armor: 0, speed: 1.0, r: 0.36, aggro: 6, drop: 2, build: () => buildBolha() },
   bolhinha: { hp: 1.5, armor: 0, speed: 1.9, r: 0.22, aggro: 7, drop: 0, build: () => buildBolha(true) },
+  robo: { hp: 4, armor: 2, speed: 1.35, r: 0.36, aggro: 6.5, drop: 2, build: buildRobo },
+  frasco: { hp: 2, armor: 0, speed: 2.3, r: 0.26, aggro: 6.5, drop: 1, hop: true, build: buildFrasco },
+  clone: { hp: 1, armor: 0, speed: 0, r: 0.42, aggro: 99, drop: 0, still: true, build: () => buildMorgrave({ clone: true }) },
 };
+// chefes que moram nos arquivos de cada mundo
+const EXT_BOSS = new Set(['saporei', 'hidra', 'golem', 'morgrave']);
 
 // cores do contorno de cada personagem (decididas com o Luis)
 const RIM = { hero: 0xffd8b0, inimigo: 0x6dff3a, chefe: 0x7dff4a, mercador: 0xc58cff, feligon: 0x7dff6a, dait: 0x2ee6ff };
@@ -45,6 +51,8 @@ const BOSS = {
   anciao: { name: 'ANCIÃO OCO', scale: 2.1, hp: 30, armor: 30, r: 1.0 },
   saporei: { name: 'SAPO-LODO REI', scale: 4, hp: 50, armor: 0, r: 1.1 },
   hidra: { name: 'HIDRA DE LODO', scale: 1, hp: 54, armor: 0, r: 0.85 },
+  golem: { name: 'GOLEM DE ENGRENAGENS', scale: 2.4, hp: 40, armor: 24, r: 1.0 },
+  morgrave: { name: 'MORGRAVE', scale: 1.9, hp: 90, armor: 0, r: 0.6 },
 };
 
 const THEMES = {
@@ -53,6 +61,7 @@ const THEMES = {
   castle: { bg: 'bgCastle', hemi: [0xb4c0f0, 0x40363a, 1.6], sun: [0xdde4ff, 2.4], player: 4, torch: 7, exposure: 1.45 },
   swamp: { bg: 'bgSwamp', hemi: [0xb0e0b8, 0x2a3a20, 1.45], sun: [0xe0f4c8, 2.3], player: 3.5, torch: 6.5, exposure: 1.3 },
   pipes: { bg: 'bgPipes', hemi: [0xe0d0b8, 0x3a3028, 1.55], sun: [0xffe4c0, 2.3], player: 4, torch: 7, exposure: 1.4 },
+  tower: { bg: 'bgTower', hemi: [0xd0c0f8, 0x3a2a40, 1.55], sun: [0xf0e4ff, 2.3], player: 4, torch: 7, exposure: 1.4 },
 };
 
 // cada herói tem a arma dele, todas com a MESMA força (só muda a cor e o som)
@@ -138,7 +147,7 @@ export class Game {
     for (let i = 0; i < n; i++) { pts[i * 3] = Math.random() * 16 - 1.5; pts[i * 3 + 1] = Math.random() * 4 - 1.5; pts[i * 3 + 2] = Math.random() * 12 - 1.5; }
     const pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(pts, 3));
-    this.dust = new THREE.Points(pg, new THREE.PointsMaterial({ color: { forest: 0xd8ff7a, swamp: 0xb8ff6a, pipes: 0xffd08a }[def.theme] || 0xffb070, size: 0.07, transparent: true, opacity: 0.8 }));
+    this.dust = new THREE.Points(pg, new THREE.PointsMaterial({ color: { forest: 0xd8ff7a, swamp: 0xb8ff6a, pipes: 0xffd08a, tower: 0xd8a0ff }[def.theme] || 0xffb070, size: 0.07, transparent: true, opacity: 0.8 }));
     scene.add(this.dust);
 
     // salas
@@ -182,6 +191,7 @@ export class Game {
     this.frozen = true; this.cine = null; this.trans = null; this.ended = false;
     this.tips = { turbo: false };
     this.setFog(false);
+    this.lobs = []; this.purified = false; this.goodMorgrave = null;
     this.lightTimer = 0;
     for (const id of this.pendingFriends) this.spawnFriend(this.player.x - 0.8, this.player.z, id);
     {
@@ -398,7 +408,7 @@ export class Game {
 
   makeBoss(x, z, type = 'capitao') {
     const B = BOSS[type];
-    const m = type === 'maeteia' ? buildMaeTeia() : type === 'anciao' ? buildAnciao() : type === 'saporei' || type === 'hidra' ? this.makeBossM3(type) : buildZumbi({ armor: true, boss: true });
+    const m = type === 'maeteia' ? buildMaeTeia() : type === 'anciao' ? buildAnciao() : type === 'saporei' || type === 'hidra' ? this.makeBossM3(type) : type === 'golem' || type === 'morgrave' ? this.makeBossM4(type) : buildZumbi({ armor: true, boss: true });
     m.root.scale.setScalar(B.scale);
     applyRim(m.root, RIM.chefe, 0.95);
     m.glow = type === 'hidra' ? hidraGlow() : groundGlow(0x5cff3a, 1.3, 0.45);
@@ -412,6 +422,7 @@ export class Game {
       spawnT: 0, hordeDone: false, ring: null,
     };
     this.initBossM3(b);
+    this.initBossM4(b);
     return b;
   }
 
@@ -489,7 +500,7 @@ export class Game {
     this.checkQuality(dt);
     const S = sharedMaterials();
     S.lava.color.setScalar(0.9 + Math.sin(this.time * 3) * 0.12);
-    S.lodo.color.setHex(0x1fa82a).multiplyScalar(0.85 + Math.sin(this.time * 2.2) * 0.18);
+    S.lodo.color.setHex(this.purified ? 0x3aa8ff : 0x1fa82a).multiplyScalar(0.85 + Math.sin(this.time * 2.2) * 0.18);
 
     if (this.trans) this.updateTransition(dt);
     else if (this.cine) this.updateCine(dt);
@@ -506,6 +517,8 @@ export class Game {
       hs.forEach((f, i) => this.updateFriend(dt, f, i));
       if (hs.length) this.ui.friendCooldown(Math.min(...hs.map((f) => f.cd)));
       if (this.def.world >= 3) this.updateMundo3(dt);
+      if (this.def.world >= 4) this.updateMundo4(dt);
+      this.updateLobs(dt);
       this.updateBolts(dt);
       this.updateBeam(dt);
       this.updatePickups(dt);
@@ -825,7 +838,7 @@ export class Game {
     e.voice = (e.voice ?? 1 + Math.random() * 4) - dt;
     if (e.voice <= 0) {
       e.voice = (e.awake ? 2.5 : 5) + Math.random() * 4;
-      if (e.awake || dist < 7) sfx({ zumbi: 'zumbi', armadura: 'zumbi', aranha: 'aranha', morcego: 'morcego', cogumelo: 'cogumelo', espinho: 'espinho', sapinho: 'sapo', bolha: 'bolha', bolhinha: 'bolha' }[e.type] || 'zumbi');
+      if (e.awake || dist < 7) sfx({ zumbi: 'zumbi', armadura: 'zumbi', aranha: 'aranha', morcego: 'morcego', cogumelo: 'cogumelo', espinho: 'espinho', sapinho: 'sapo', bolha: 'bolha', bolhinha: 'bolha', robo: 'robo', frasco: 'frasco', clone: 'nada' }[e.type] || 'zumbi');
     }
     if (!e.chase) {
       if (!e.awake && dist < d.aggro && !p.dead) e.awake = true;
@@ -837,7 +850,7 @@ export class Game {
     if (e.type === 'espinho') return this.updateEspinho(e, dt, dx, dz, dist);
     if (e.type === 'cogumelo' && this.updateCogumelo(e, dt, dx, dz, dist)) return;
     // bote: o zumbi para, levanta os braços e pula em cima do Lunerb
-    if ((e.type === 'zumbi' || e.type === 'armadura') && !e.chase) {
+    if ((e.type === 'zumbi' || e.type === 'armadura' || e.type === 'robo') && !e.chase) {
       e.lungeCd = Math.max(0, (e.lungeCd || 0) - dt);
       if (e.lunge) {
         e.lunge.t += dt;
@@ -912,6 +925,9 @@ export class Game {
     const isBoss = !!e.name;
     if (isBoss && (e.state === 'intro' || e.state === 'dormindo')) return;
     if (e.type === 'hidra') return this.hidraDamage(e, dmg);
+    if (e.type === 'morgrave') return this.morgraveDamage(e, dmg);
+    if (e.type === 'golem' && e.state === 'quente') dmg *= 1.5; // superaquecido: leva mais dano
+    if (e.type === 'clone' && !this.tips.clone) { this.tips.clone = true; this.ui.toast('Era um clone! O verdadeiro tem o cajado que BRILHA.', 2200); }
     if (e.type === 'saporei' && e.state === 'cansado') dmg *= 1.6; // cansado: leva mais dano
     e.hit = 0.15;
     const kb = isBoss ? (e.type === 'anciao' ? 0 : 0.6) : 4;
@@ -944,6 +960,8 @@ export class Game {
     if (e.name) { this.bossDefeated(); return; }
     if (e.type === 'cogumelo') this.spores(e.x, e.z);
     if (e.type === 'bolha') this.splitBolha(e);
+    if (e.type === 'frasco') this.popFrasco(e, 1.0);
+    if (e.type === 'robo') { this.fx.sparks(e.x, 0.6, e.z, 0xffd23a, 10); sfx('desliga'); }
     if (e.rootMesh) e.rootMesh.visible = false;
     if (e.iceMesh) e.iceMesh.visible = false;
     const n = e.def.drop + (Math.random() < 0.5 ? 1 : 0);
@@ -985,6 +1003,7 @@ export class Game {
     if (b.type === 'maeteia') return this.updateMaeTeia(b, dt, dx, dz, dist);
     if (b.type === 'anciao') return this.updateAnciao(b, dt, dx, dz, dist);
     if (b.type === 'saporei' || b.type === 'hidra') return this.updateBossM3(b, dt, dx, dz, dist);
+    if (b.type === 'golem' || b.type === 'morgrave') return this.updateBossM4(b, dt, dx, dz, dist);
     const speed = (broken ? 2.75 : 1.9) * this.difficulty;
     switch (b.state) {
       case 'perseguir':
@@ -1070,9 +1089,10 @@ export class Game {
     const c = this.cine;
     c.t += dt;
     const b = this.room.boss;
+    if (c.kind === 'golpe') { this.updateGolpe(dt); return; }
     if (c.kind === 'boss') {
       this.viewTarget = this.focusView(b.hx ?? b.x, b.hz ?? b.z, b.type === 'hidra' ? 4.2 : 3.4);
-      if (c.t > 0.6 && !c.shown) { c.shown = true; this.ui.bigText(b.name, 1800, 'boss'); this.shake = 0.5; sfx({ anciao: 'arvore', maeteia: 'aranha', saporei: 'sapoRei', hidra: 'hidra' }[b.type] || 'rugido'); }
+      if (c.t > 0.6 && !c.shown) { c.shown = true; this.ui.bigText(b.name, 1800, 'boss'); this.shake = 0.5; sfx({ anciao: 'arvore', maeteia: 'aranha', saporei: 'sapoRei', hidra: 'hidra', golem: 'golem', morgrave: 'morgrave' }[b.type] || 'rugido'); }
       if (b.type === 'capitao') b.m.arms.forEach((a) => (a.rotation.x = -2.6 + Math.sin(c.t * 10) * 0.2));
       if (c.t > 2.6) {
         this.cine = null;
@@ -1080,6 +1100,8 @@ export class Game {
         this.viewTarget = this.fitRoom(this.room);
         if (b.type === 'capitao') this.spawnHorde(3, true);
         if (b.type === 'maeteia') this.spawnBabies(2);
+        if (b.type === 'golem') this.ui.toast('Quebre as placas de metal! Fuja do pisão e do giro.', 2400);
+        if (b.type === 'morgrave') this.ui.dialog([{ who: 'Morgrave', text: 'Então vocês chegaram até aqui... o lodo vai cobrir o mundo inteiro!' }, { who: 'Dait', text: 'Mestre, pare! O lodo está mandando em você!' }, { who: 'Morgrave', text: 'Ha ha ha! Tentem me pegar!' }], () => {});
         if (b.type === 'hidra') this.ui.toast('Só a cabeça que BRILHA leva dano! Derrube as três em sequência.', 2600);
         this.spawnArenaItem();
       }
@@ -1089,6 +1111,7 @@ export class Game {
         this.cine = null;
         this.viewTarget = this.fitRoom(this.room);
         if (c.type === 'maeteia') this.freeFeligon();
+        else if (c.type === 'golem') this.ui.dialog([{ who: 'Golem', text: 'Bzzt... sistema... desligando...' }, { who: 'Dait', text: 'Esse golem guardava a escada do topo. O Morgrave está logo acima!' }], () => {});
         else if (c.type === 'saporei') this.ui.dialog([{ who: 'Sapo-Lodo Rei', text: 'Croac... minha coroa... o lodo me deixou tão bravo.' }, { who: 'Sapo-Lodo Rei', text: 'Os canos que trazem o lodo começam logo ali. Sigam o barulho!' }, { who: 'Feligon', text: 'Ouviu? Tem alguém batendo nos canos!' }], () => {});
         else if (c.type === 'hidra') this.ui.dialog([{ who: 'Dait', text: 'A Hidra virou poça! Os canos do Morgrave pararam!' }, { who: 'Dait', text: 'Mas ele vai fazer mais lodo lá no alto da TORRE DO ALQUIMISTA.' }, { who: 'Lunerb', text: 'Então a gente sobe essa torre. Juntos!' }], () => {});
         else if (c.type === 'anciao') this.ui.dialog([{ who: 'Ancião Oco', text: 'Ahh... obrigado, crianças. O lodo saiu de mim.' }, { who: 'Ancião Oco', text: 'Ele vem do pântano. Alguém está despejando lodo nos rios...' }, { who: 'Lunerb', text: 'Então o caminho de casa passa pelo pântano. Vamos!' }], () => {});
@@ -1132,6 +1155,7 @@ export class Game {
     const b = this.room.boss;
     this.shake = 0.5;
     if (b.type === 'anciao') { this.ui.toast('A casca caiu! Acerte o coração verde!'); return; }
+    if (b.type === 'golem') { this.ui.toast('As placas caíram! Quando ele soltar vapor, ataque!', 2200); this.spawnRobos(2); return; }
     this.ui.toast('A armadura caiu! Agora ele está mais rápido!');
     if (!b.hordeDone) { b.hordeDone = true; this.spawnHorde(3, true); }
   }
@@ -1398,6 +1422,8 @@ export class Game {
       g = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 5).rotateX(Math.PI / 2), material(0xe8d8a0, 'glow'));
     } else if (kind === 'teia') {
       g = new THREE.Mesh(BALL, material(0xf2f2ff, 'glow', 0.85)); g.scale.setScalar(0.17);
+    } else if (kind === 'engrenagem') {
+      g = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 8), material(0xc89a4a, 'lit'));
     } else if (kind === 'lodo') {
       g = new THREE.Mesh(BALL, material(0x5cdf3a, 'glow', 0.9)); g.scale.setScalar(0.2);
     } else {
@@ -1416,7 +1442,7 @@ export class Game {
       s.life -= dt;
       s.x += s.dx * s.speed * dt; s.z += s.dz * s.speed * dt;
       s.g.position.set(s.x, 0.8, s.z);
-      if (s.kind !== 'espinho') s.g.rotation.x += dt * 8;
+      if (s.kind === 'engrenagem') s.g.rotation.y += dt * 14; else if (s.kind !== 'espinho') s.g.rotation.x += dt * 8;
       let dead = s.life <= 0 || SOLID.has(this.tileAt(s.x, s.z));
       if (!dead && !p.dead && Math.hypot(p.x - s.x, p.z - s.z) < P_R + 0.18) {
         dead = true;
@@ -2410,20 +2436,21 @@ export class Game {
       r.rotation.y = e.face;
       r.scale.setScalar(HERO_SCALE * (e.hit > 0 ? 1.15 : 1));
       const w = Math.sin(this.time * (e.chase ? 12 : 8) + e.x) * (e.moving ? 0.6 : 0.1);
-      if (e.type === 'zumbi' || e.type === 'armadura') { e.m.legs[0].rotation.x = w; e.m.legs[1].rotation.x = -w; e.m.arms.forEach((a, i) => (a.rotation.x = e.windup ? -2.7 : -1.3 + Math.sin(this.time * 4 + i) * 0.15)); }
+      if (e.type === 'zumbi' || e.type === 'armadura' || e.type === 'robo') { e.m.legs[0].rotation.x = w; e.m.legs[1].rotation.x = -w; e.m.arms.forEach((a, i) => (a.rotation.x = e.windup ? -2.7 : -1.3 + Math.sin(this.time * 4 + i) * 0.15)); }
       if (e.type === 'aranha') e.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 18 + i) * (e.moving ? 0.35 : 0.05)));
       if (e.type === 'morcego') e.m.wings.forEach((wg, i) => (wg.rotation.z = Math.sin(this.time * 16) * 0.7 * (i ? -1 : 1)));
       if (e.type === 'cogumelo') { e.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 9 + i * 3) * (e.moving ? 0.5 : 0))); const sw = e.puff ? 1 + e.puff.t * 0.7 : 1; e.m.cap.scale.set(sw, sw * 0.9, sw); }
       if (e.type === 'espinho') { const k = e.aimT > 0 ? 1.25 : 1 + Math.sin(this.time * 3) * 0.04; e.m.head.scale.setScalar(k); }
       this.animateMundo3Enemy(e);
+      this.animateMundo4Enemy(e);
       if (e.iceT > 0) { e.iceT = Math.max(0, e.iceT - dt); this.iceVisual(e); if (e.rootMesh) e.rootMesh.visible = false; }
       else { if (e.iceMesh) e.iceMesh.visible = false; if (e.rootT > 0) this.rootVisual(e); else if (e.rootMesh) e.rootMesh.visible = false; }
     }
     const b = this.room.boss;
     if (b && b.m.glow) { b.m.glow.visible = b.alive && b.state !== 'dormindo'; b.m.glow.position.set(b.x, 0.03, b.z); }
-    if (b && b.alive && (b.type === 'saporei' || b.type === 'hidra')) {
+    if (b && b.alive && EXT_BOSS.has(b.type)) {
       if (b.iceT > 0) b.iceT = Math.max(0, b.iceT - dt);
-      this.animateBossM3(b, dt);
+      if (b.type === 'golem' || b.type === 'morgrave') this.animateBossM4(b, dt); else this.animateBossM3(b, dt);
     } else if (b && b.alive) {
       const r = b.m.root;
       r.position.set(b.x, 0, b.z);
@@ -2509,3 +2536,4 @@ function turnTo(a, b, k) {
 
 // Mundo 3 (pântano, canos, Dait) mora em mundo3.js
 Object.assign(Game.prototype, Mundo3);
+Object.assign(Game.prototype, Mundo4);

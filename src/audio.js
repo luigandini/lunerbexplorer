@@ -175,6 +175,17 @@ const SFX = {
   gelo: (t) => { for (let i = 0; i < 7; i++) tone(1800 + Math.random() * 2200, t + i * 0.03, 0.12, 'sine', 0.07); noise(t, 0.5, 0.2, sfxGain, 5000, 'highpass'); tone(600, t, 0.6, 'triangle', 0.1, sfxGain, 1500); },
   hidra: (t) => { growl(t, 1.2, 80, 0.3, 11); growl(t + 0.15, 1.0, 120, 0.2, 16); noise(t, 0.9, 0.2, sfxGain, 600, 'lowpass', 150); },
   cano: (t) => { tone(400, t, 0.3, 'square', 0.08, sfxGain, 380); noise(t, 0.5, 0.2, sfxGain, 2500, 'bandpass', 1200, 3); },
+  // Mundo 4: torre
+  robo: (t) => { tone(880, t, 0.06, 'square', 0.06); tone(660, t + 0.08, 0.06, 'square', 0.06); tone(990, t + 0.16, 0.08, 'square', 0.05); },
+  desliga: (t) => { tone(700, t, 0.5, 'square', 0.1, sfxGain, 60); noise(t, 0.3, 0.15, sfxGain, 3000, 'bandpass', 800, 3); },
+  frasco: (t) => { tone(1200 + Math.random() * 400, t, 0.08, 'sine', 0.07, sfxGain, 1800); },
+  vidro: (t) => { for (let i = 0; i < 6; i++) tone(2400 + Math.random() * 2400, t + i * 0.02, 0.1, 'triangle', 0.06); noise(t, 0.3, 0.25, sfxGain, 4000, 'highpass'); },
+  golem: (t) => { growl(t, 1.0, 70, 0.3, 30); for (let i = 0; i < 3; i++) noise(t + i * 0.12, 0.08, 0.2, sfxGain, 2000, 'bandpass', 1200, 4); tone(110, t, 0.8, 'square', 0.1, sfxGain, 55); },
+  vapor: (t) => { noise(t, 0.9, 0.3, sfxGain, 4000, 'highpass', 1500); },
+  morgrave: (t) => { [520, 470, 420, 380, 340].forEach((f, i) => tone(f, t + i * 0.12, 0.11, 'sawtooth', 0.09, sfxGain, f * 0.9)); },
+  teleporte: (t) => { tone(300, t, 0.3, 'sine', 0.12, sfxGain, 1600); noise(t, 0.3, 0.12, sfxGain, 2000, 'bandpass', 6000, 2); },
+  golpe: (t) => { [262, 330, 392, 523, 659, 784].forEach((f, i) => tone(f, t + i * 0.05, 1.6, 'triangle', 0.1)); noise(t, 1.5, 0.3, sfxGain, 6000, 'lowpass', 300); tone(65, t, 1.8, 'sine', 0.4, sfxGain, 40); },
+  purifica: (t) => { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(f, t + i * 0.1, 0.8, 'sine', 0.09)); },
   susto: (t) => { tone(1800, t, 0.5, 'sine', 0.05, sfxGain, 1700); tone(1907, t, 0.5, 'sine', 0.05, sfxGain, 1800); },
 };
 
@@ -191,6 +202,7 @@ const AMBIENCE = {
   forestNight: { drone: [49, 73.4], wind: 500, events: ['grilo', 'coruja', 'galho', 'sussurro'] },
   swamp: { drone: [46.2, 69.3], wind: 420, events: ['coaxo', 'borbulha', 'mosquito', 'sussurro'] },
   pipes: { drone: [41.2, 61.7], wind: 260, events: ['gota', 'cano', 'borbulha', 'rangido'] },
+  tower: { drone: [43.7, 65.4], wind: 350, events: ['tique', 'borbulha', 'rangido', 'sussurro'] },
 };
 const AMB_EVENTS = {
   gota: (t) => { tone(1800 + Math.random() * 600, t, 0.15, 'sine', 0.08, ambGain, 900); },
@@ -199,6 +211,7 @@ const AMB_EVENTS = {
   grilo: (t) => { for (let i = 0; i < 6; i++) tone(4200, t + i * 0.06, 0.03, 'square', 0.025, ambGain); },
   coruja: (t) => { tone(420, t, 0.35, 'sine', 0.07, ambGain, 380); tone(400, t + 0.45, 0.5, 'sine', 0.07, ambGain, 350); },
   galho: (t) => { noise(t, 0.1, 0.12, ambGain, 1800, 'bandpass', 900, 3); },
+  tique: (t) => { for (let i = 0; i < 4; i++) tone(1500, t + i * 0.25, 0.03, 'square', 0.02, ambGain); },
   coaxo: (t) => { tone(120, t, 0.15, 'square', 0.05, ambGain, 90); tone(125, t + 0.2, 0.15, 'square', 0.05, ambGain, 90); },
   borbulha: (t) => { for (let i = 0; i < 4; i++) tone(200 + Math.random() * 200, t + i * 0.09, 0.1, 'sine', 0.06, ambGain, 600); },
   mosquito: (t) => { tone(880, t, 0.8, 'sawtooth', 0.012, ambGain, 920); },
@@ -283,6 +296,21 @@ const THEMES = {
     bass: [33, R, 45, R, 33, R, 45, R, 31, R, 43, R, 31, R, 43, R, 29, R, 41, R, 29, R, 41, R, 28, R, 40, R, 32, R, 44, R],
     drums: 'k.hsk.h.k.hsk.hs',
     leadType: 'square',
+  },
+  tower: {
+    bpm: 108,
+    lead: [64, R, 67, R, 71, R, 70, R, 67, R, 64, R, 63, R, R, R, 64, R, 67, R, 72, R, 71, R, 69, R, 67, R, 66, R, R, R,
+      76, R, 74, R, 72, R, 71, R, 69, R, 71, R, 72, R, R, R, 71, R, 69, R, 67, R, 66, R, 64, R, 63, R, 64, R, R, R],
+    bass: [40, R, 47, R, 40, R, 47, R, 36, R, 43, R, 36, R, 43, R, 38, R, 45, R, 38, R, 45, R, 35, R, 42, R, 35, R, 39, R],
+    drums: 'k.h.s.hhk.h.s.h.',
+    leadType: 'square',
+  },
+  final: {
+    bpm: 160,
+    lead: [64, 67, 71, R, 76, R, 75, 71, 72, R, 71, 69, 67, R, 64, R, 64, 67, 71, R, 79, R, 78, 76, 74, R, 72, 71, 69, R, 67, R],
+    bass: [40, R, 52, R, 40, R, 52, R, 36, R, 48, R, 36, R, 48, R, 38, R, 50, R, 38, R, 50, R, 35, R, 47, R, 35, R, 47, R],
+    drums: 'k.hsk.hsk.hsk.ss',
+    leadType: 'sawtooth',
   },
   chase: {
     bpm: 160,

@@ -155,6 +155,68 @@ export function pipe(target, x, z, r) {
   }, x, z, r() * 6);
 }
 
+// ---------- Mundo 4: torre do alquimista ----------
+export function shelf(target, x, z, r) {
+  place(target, (g) => {
+    part(g, rb(0.8, 1.1, 0.3, 0.03), 0x5a3a24, 'lit', 0, 0.55, 0);
+    for (let k = 0; k < 3; k++) {
+      part(g, rb(0.76, 0.03, 0.3, 0.01), 0x3a2414, 'lit', 0, 0.25 + k * 0.33, 0.02);
+      for (let i = 0; i < 4; i++) {
+        const c = [0x9a4bff, 0x2ee6ff, 0x7dff3a, 0xff5a8a, 0xffd23a][Math.floor(r() * 5)];
+        if (r() < 0.5) part(g, cylinder(0.04, 0.05, 0.14, 6), c, 'glow', -0.28 + i * 0.18, 0.34 + k * 0.33, 0.06);
+        else part(g, rb(0.08, 0.2, 0.18, 0.01), [0x8a2a2a, 0x2a4a8a, 0x3a6a2a][Math.floor(r() * 3)], 'lit', -0.28 + i * 0.18, 0.37 + k * 0.33, 0.04);
+      }
+    }
+  }, x, z, Math.floor(r() * 4) * Math.PI / 2);
+}
+
+export function cauldron(target, x, z, r) {
+  place(target, (g) => {
+    part(g, sphere(0.3, 12, 8), 0x2a2a30, 'metal', 0, 0.3, 0, 0, 0, 0, 1, 0.8, 1);
+    part(g, cylinder(0.26, 0.26, 0.04, 12), 0x7dff3a, 'glow', 0, 0.5, 0);
+    for (let i = 0; i < 3; i++) part(g, sphere(0.04, 6, 4), 0xb8ff6a, 'glow', (r() - 0.5) * 0.3, 0.53, (r() - 0.5) * 0.3);
+  }, x, z, 0);
+}
+
+export function gearProp(target, x, z, r) {
+  place(target, (g) => {
+    part(g, cylinder(0.3, 0.3, 0.08, 12), 0x8a6a3a, 'metal', 0, 0.3, 0, Math.PI / 2, 0, 0);
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; part(g, rb(0.1, 0.1, 0.08, 0.02), 0x8a6a3a, 'metal', Math.cos(a) * 0.34, 0.3 + Math.sin(a) * 0.34, 0); }
+  }, x, z, r() * 6);
+}
+
+// engrenagem do chão que gira (fica separada para girar)
+export function floorGear() {
+  const g = new THREE.Group();
+  part(g, cylinder(0.46, 0.46, 0.06, 16), 0x9a7a4a, 'metal', 0, 0.04, 0);
+  for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; part(g, rb(0.12, 0.06, 0.1, 0.02), 0x9a7a4a, 'metal', Math.cos(a) * 0.48, 0.04, Math.sin(a) * 0.48, 0, -a, 0); }
+  part(g, cylinder(0.12, 0.12, 0.09, 10), 0x5a4a2a, 'metal', 0, 0.06, 0);
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; part(g, rb(0.06, 0.03, 0.3, 0.01), 0xffd23a, 'glow', Math.cos(a) * 0.25, 0.08, Math.sin(a) * 0.25, 0, -a, 0); }
+  bake(g);
+  return g;
+}
+
+// casa do Lucas (cena final)
+export function house() {
+  const g = new THREE.Group();
+  part(g, rb(1.1, 0.8, 0.9, 0.05), 0xf2e2c8, 'lit', 0, 0.4, 0);
+  part(g, rb(1.25, 0.08, 1.05, 0.03), 0x8a3a2a, 'lit', 0, 0.82, 0);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.85, 0.55, 4), material(0xb84a32, 'lit'));
+  roof.position.set(0, 1.12, 0); roof.rotation.y = Math.PI / 4; roof.scale.set(1, 1, 0.82);
+  g.add(roof);
+  part(g, rb(0.22, 0.22, 0.04, 0.02), 0x7ac8ff, 'glow', -0.3, 0.5, 0.46);
+  part(g, rb(0.22, 0.22, 0.04, 0.02), 0x7ac8ff, 'glow', 0.32, 0.5, 0.46);
+  part(g, rb(0.14, 0.3, 0.14, 0.02), 0x8a8a8a, 'lit', 0.3, 1.2, -0.15);
+  bake(g);
+  const door = pivot(g, -0.04, 0, 0.46);
+  part(door, rb(0.26, 0.42, 0.04, 0.02), 0x6a3a1a, 'lit', 0.13, 0.21, 0);
+  part(door, sphere(0.02, 6, 4), 0xffd23a, 'metal', 0.22, 0.22, 0.03);
+  const light = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.4), new THREE.MeshBasicMaterial({ color: 0xffe2a0 }));
+  light.position.set(0.09, 0.21, 0.455);
+  g.add(light);
+  return { group: g, door };
+}
+
 // ponte que afunda: tábuas (pântano) ou grade de metal (canos)
 export function plank(metalGrate = false) {
   const g = new THREE.Group();

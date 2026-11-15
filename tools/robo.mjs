@@ -25,14 +25,14 @@ const dlg = async (n = 8) => { for (let i = 0; i < n; i++) { if (!(await G(() =>
 const W = (fn, t = 120000, arg) => page.waitForFunction(fn, { timeout: t }, arg);
 
 await page.goto('http://localhost:8779/?baixa', { waitUntil: 'load' });
-await G(() => localStorage.setItem('lunerb_save_v1', JSON.stringify({ unlocked: 6, weapons: 2, crystals: 300, friends: [], endings: { 1: true, 2: true } })));
+await G(() => localStorage.setItem('lunerb_save_v1', JSON.stringify({ unlocked: 8, weapons: 2, crystals: 300, friends: [], endings: { 1: true, 2: true } })));
 await page.reload({ waitUntil: 'load' }); await wait(800);
 const problems = [];
 const keys = ['w', 'a', 's', 'd', 'j', 'k', 'l'];
 const secs = Number(process.argv[2] || 40);
-for (const lvl of [1, 2, 3, 4, 5, 6]) {
+for (const lvl of [1, 2, 3, 4, 5, 6, 7, 8]) {
   // fases 3+ com amigos que já teriam sido resgatados
-  await G((l) => { const s = window.__lunerb.save; s.friends = l >= 5 ? ['feligon'] : []; if (l === 6) s.friends = ['feligon']; }, lvl);
+  await G((l) => { const s = window.__lunerb.save; s.friends = l >= 7 ? ['feligon', 'dait'] : l >= 5 ? ['feligon'] : []; }, lvl);
   await G((l) => window.__lunerb.startLevel(l), lvl);
   await W((l) => window.__lunerb.game.def && window.__lunerb.game.def.id === l && window.__lunerb.game.running, 60000, lvl);
   let stuck = 0, t0 = Date.now(), deaths = 0, lastRoom = -1, roomT = Date.now();

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS, SOLID } from '../src/levels.js';
 
-const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceFDbqpoZ'.split(''));
+const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceFDbqpoZyri'.split(''));
 
 test('o jogo tem 8 fases planejadas em 4 mundos, mais o prólogo', () => {
   assert.equal(TOTAL_PHASES, 8);
@@ -164,4 +164,15 @@ test('Mundo 3: pontes, névoa, jaula do Dait e gás só depois do resgate', () =
   const reach = reachable(p6.rooms[cageRoom]);
   const c = p6.rooms[cageRoom].cage;
   assert.ok([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach.has(c.x + dx, c.y + dy)), 'dá para chegar na jaula');
+});
+
+test('jogo completo: 8 fases prontas, Mundo 4 com Golem e Morgrave', () => {
+  assert.ok(WORLDS.every((w) => w.ready), 'todos os mundos prontos');
+  const fases = LEVELS.filter((l) => l.kind === 'fase');
+  assert.equal(fases.length, TOTAL_PHASES);
+  assert.deepEqual(fases.map((l) => l.id), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(LEVELS.find((l) => l.id === 7).boss, 'golem');
+  assert.equal(LEVELS.find((l) => l.id === 8).boss, 'morgrave');
+  assert.ok(parseLevel(LEVELS.find((l) => l.id === 7)).rooms.some((r) => r.gears.length), 'fase 7 tem engrenagens');
+  for (const f of fases.filter((f) => f.id > 1)) assert.ok(f.boss, `fase ${f.id} termina com chefe`);
 });
