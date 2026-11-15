@@ -59,7 +59,7 @@ button { font-family: inherit; cursor: pointer; border: 0; color: #fff; }
 
 /* ---------- telas ---------- */
 .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.title-wrap { text-align: center; position: absolute; right: 5vw; top: 50%; transform: translateY(-50%); }
+.title-wrap { text-align: center; position: absolute; right: 4vw; top: 50%; transform: translateY(-50%); background: rgba(12,10,30,.55); padding: 14px 26px 16px; border-radius: 22px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
 #logo { font-size: 68px; margin: 0; letter-spacing: 6px; color: #ff3a2a; text-shadow: 0 0 18px #ff2a00, 0 5px 0 #400; font-weight: 900; }
 .sub { margin: 0 0 18px; color: #c9b8ff; letter-spacing: 1px; }
 .credits { margin-top: 14px; font-size: 15px; color: #ffe08a; }

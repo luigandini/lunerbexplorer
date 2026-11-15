@@ -39,7 +39,7 @@ export const OUTFITS = {
   lunerb: { shirt: 0xd42020, sleeves: 0xd42020, pants: 0x8f8f94, pantsLong: false, shoes: 0xd42020, sole: 0xffffff, emblem: 'bolt' },
   lucas: { shirt: 0xf4f4f4, sleeves: 0xf4f4f4, pants: 0xeeeeee, pantsLong: true, shoes: 0xffffff, sole: 0xcfcfcf, emblem: null },
   feligon: { shirt: 0xf6f2dc, sleeves: 0x4fc31a, sleeveLong: true, pants: 0x18181c, pantsLong: true, ripped: true, shoes: 0x3fbf1a, sole: 0x111111, emblem: 'leaf' },
-  dait: { shirt: 0xe9e9ee, sleeves: 0xe9e9ee, sleeveLong: true, pants: 0xdedee4, pantsLong: true, shoes: 0x1a1a1e, sole: 0x2a2a2e, emblem: null, mask: true },
+  dait: { shirt: 0xe9e9ee, sleeves: 0xe9e9ee, sleeveLong: true, pants: 0x1c1c22, pantsLong: true, shoes: 0x1a1a1e, sole: 0x2a2a2e, emblem: null, mask: true },
 };
 
 export function buildHero(outfitName = 'lunerb') {

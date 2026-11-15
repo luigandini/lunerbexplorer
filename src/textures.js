@@ -214,6 +214,21 @@ function sunset() {
   return toTex(c, false);
 }
 
+// Céu de dia com nuvens (capa do jogo)
+function daySky() {
+  const [c, ctx] = canvas(512);
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#3a8ae8'); g.addColorStop(0.6, '#8cc8ff'); g.addColorStop(1, '#d8f0ff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 512);
+  const r = rng(51);
+  for (let i = 0; i < 7; i++) {
+    const x = r() * 512, y = 40 + r() * 220, w = 50 + r() * 70;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.ellipse(x + (k - 2) * w * 0.3, y + Math.sin(k) * 6, w * 0.35, w * 0.18, 0, 0, 7); ctx.fill(); }
+  }
+  return toTex(c, false);
+}
+
 // Fundo infinito escuro (degradê com estrelinhas)
 function background(top = '#1d2a36', bottom = '#06080d') {
   const [c, ctx] = canvas(512);
@@ -248,6 +263,7 @@ const MAKERS = {
   planks: () => planks(),
   bgTower: () => background('#2e2244', '#07040c'),
   bgSunset: () => sunset(),
+  bgDay: () => daySky(),
   bgMenu: () => background('#2a2f45', '#07060b'),
 };
 

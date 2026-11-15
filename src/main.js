@@ -88,22 +88,48 @@ function buildMenuScene() {
   home.group.visible = false;
   home.group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   island.add(home.group);
+  // vilazinha da capa (casas, cerca e caminho), só na tela inicial
+  const village = new THREE.Group();
+  const vr = (() => { let q = 91; return () => { q = (q * 16807) % 2147483647; return (q - 1) / 2147483646; }; })();
+  for (const [x, z, sc, ry] of [[-0.55, -0.95, 0.55, 0.25], [0.75, -1.0, 0.6, -0.3]]) {
+    const h = Props.house();
+    h.group.position.set(x, 0, z); h.group.scale.setScalar(sc); h.group.rotation.y = ry;
+    village.add(h.group);
+  }
+  const vdeco = new THREE.Group();
+  const wood = new THREE.MeshLambertMaterial({ color: 0x8a6a42 });
+  for (let i = 0; i < 7; i++) {
+    const post = new THREE.Mesh(rb(0.05, 0.22, 0.05, 0.01), wood);
+    post.position.set(-1.6 + i * 0.22, 0.11, 0.35);
+    vdeco.add(post);
+  }
+  const rail = new THREE.Mesh(rb(1.4, 0.04, 0.03, 0.01), wood);
+  rail.position.set(-0.94, 0.17, 0.35);
+  vdeco.add(rail);
+  Props.flowers(vdeco, 0.1, -0.45, vr);
+  Props.grassTuft(vdeco, -0.2, 0.7, vr);
+  vdeco.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  village.add(vdeco);
+  village.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  village.visible = false;
+  island.add(village);
   const bolts = [];
   for (let i = 0; i < 12; i++) {
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x9a4bff : 0x222222 }));
     island.add(b); bolts.push(b);
   }
-  return { scene, cam, island, heroes, bolts, pose: 'title', t: 0, rim, home, deco, poseT: 0 };
+  return { scene, cam, island, heroes, bolts, pose: 'title', t: 0, rim, home, deco, village, poseT: 0 };
 }
 
 function setPose(pose, hero = 'lunerb') {
   menu.pose = pose;
   menu.poseT = 0;
-  const final = pose === 'final';
-  for (const [k, h] of Object.entries(menu.heroes)) h.root.visible = final ? k !== 'lucas' : k === hero;
+  const final = pose === 'final', cover = pose === 'title';
+  for (const [k, h] of Object.entries(menu.heroes)) h.root.visible = final || cover ? k !== 'lucas' : k === hero;
   menu.home.group.visible = final;
+  menu.village.visible = cover;
   menu.home.door.rotation.y = 0;
-  menu.scene.background = tex(final ? 'bgSunset' : 'bgMenu');
+  menu.scene.background = tex(final ? 'bgSunset' : cover ? 'bgDay' : 'bgMenu');
   menu.rim.color.setHex(final ? 0xffa050 : 0xff5040);
   const L = menu.heroes.lunerb;
   L.guns[1].visible = save.weapons >= 1 || pose === 'title';
@@ -115,6 +141,7 @@ function updateMenu(dt) {
   m.t += dt;
   m.poseT += dt;
   if (m.pose === 'final') return updateFinalPose(m);
+  if (m.pose === 'title') return updateCoverPose(m);
   const aspect = innerWidth / innerHeight;
   // a maquete fica à esquerda na tela inicial e no centro nas outras
   const left = m.pose === 'title';
@@ -141,6 +168,39 @@ function updateMenu(dt) {
     const a = m.t * 2.5 + i * 0.52;
     b.position.set(Math.cos(a) * 0.55, 0.3 + ((m.t * 0.9 + i * 0.3) % 1.4), 0.1 + Math.sin(a) * 0.55);
   });
+}
+
+// capa: os três amigos juntos, o Dait no meio abraçando os dois (pedido do Lucas)
+function updateCoverPose(m) {
+  m.cam.aspect = innerWidth / innerHeight;
+  const wide = m.cam.aspect > 1.9;
+  m.cam.position.set(wide ? 1.35 : 1.15, 1.75, wide ? 5.3 : 5.8); m.cam.lookAt(wide ? 1.35 : 1.15, 0.58, 0);
+  m.cam.updateProjectionMatrix();
+  m.island.position.y = Math.sin(m.t * 0.8) * 0.04;
+  m.island.rotation.y = Math.sin(m.t * 0.25) * 0.12;
+  const L = m.heroes.lunerb, F = m.heroes.feligon, D = m.heroes.dait;
+  const breathe = Math.sin(m.t * 2) * 0.008;
+  // da esquerda para a direita, como na imagem: Feligon, Dait, Lunerb
+  F.root.position.set(-0.53, 0, 0.1); F.root.rotation.y = 0.1;
+  D.root.position.set(0, 0, 0.02); D.root.rotation.y = 0;
+  L.root.position.set(0.53, 0, 0.1); L.root.rotation.y = -0.1;
+  for (const h of [F, D, L]) {
+    h.legs[0].rotation.x = 0; h.legs[1].rotation.x = 0;
+    h.body.position.y = breathe;
+    h.guns.forEach((g) => (g.visible = false));
+  }
+  // Dait: um braço em cima do ombro de cada amigo
+  D.arms[0].rotation.set(0, 0, -1.32);
+  D.arms[1].rotation.set(0, 0, 1.32);
+  // os amigos: braço de dentro nas costas do Dait, braço de fora solto
+  F.arms[0].rotation.set(Math.sin(m.t * 1.3) * 0.05, 0, 0.12);
+  F.arms[1].rotation.set(0.25, 0, 0.55);
+  L.arms[0].rotation.set(0.25, 0, -0.55);
+  L.arms[1].rotation.set(Math.sin(m.t * 1.3 + 1) * 0.05, 0, -0.12);
+  F.head.rotation.y = 0.15 + Math.sin(m.t * 0.7) * 0.08;
+  L.head.rotation.y = -0.15 + Math.sin(m.t * 0.7 + 1) * 0.08;
+  D.head.rotation.y = Math.sin(m.t * 0.5) * 0.06;
+  m.bolts.forEach((b) => (b.visible = false));
 }
 
 // cena final: os três amigos chegam e o Lunerb abre a porta de casa

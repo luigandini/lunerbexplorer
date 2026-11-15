@@ -1,5 +1,5 @@
 // Funciona sem internet depois da primeira vez. Sempre tenta a versão nova primeiro.
-const CACHE = 'lunerb-v7-001';
+const CACHE = 'lunerb-v7-002';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png',
