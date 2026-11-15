@@ -162,8 +162,19 @@ const SFX = {
   espinho: (t) => { noise(t, 0.08, 0.2, sfxGain, 4000); tone(900, t, 0.08, 'square', 0.06, sfxGain, 400); },
   arvore: (t) => { growl(t, 1.6, 55, 0.35, 5); noise(t, 1.2, 0.25, sfxGain, 300, 'lowpass', 100); for (let i = 0; i < 6; i++) noise(t + 0.2 + i * 0.15, 0.08, 0.15, sfxGain, 1500, 'bandpass', 800, 3); },
   raizes: (t) => { noise(t, 0.6, 0.3, sfxGain, 300, 'lowpass', 900); for (let i = 0; i < 5; i++) noise(t + i * 0.08, 0.06, 0.15, sfxGain, 1200, 'bandpass', 600, 3); tone(330, t + 0.3, 0.4, 'triangle', 0.1, sfxGain, 660); },
+  pulso: (t) => { tone(1300, t, 0.12, 'triangle', 0.1, sfxGain, 600); tone(2600, t, 0.08, 'sine', 0.05, sfxGain, 1300); },
   folha: (t) => { noise(t, 0.12, 0.12, sfxGain, 2500, 'bandpass', 900, 2); tone(700, t, 0.08, 'triangle', 0.06, sfxGain, 1200); },
   amigo: (t) => { [392, 494, 587, 784].forEach((f, i) => tone(f, t + i * 0.08, 0.2, 'triangle', 0.13)); },
+  // Mundo 3: pântano e canos
+  sapo: (t) => { tone(140, t, 0.18, 'square', 0.16, sfxGain, 90); tone(150, t + 0.22, 0.22, 'square', 0.16, sfxGain, 85); },
+  sapoRei: (t) => { growl(t, 0.9, 60, 0.35, 7); tone(90, t, 0.5, 'square', 0.18, sfxGain, 50); tone(95, t + 0.55, 0.6, 'square', 0.18, sfxGain, 45); },
+  bolha: (t) => { tone(260 + Math.random() * 120, t, 0.12, 'sine', 0.14, sfxGain, 700); },
+  onda: (t) => { noise(t, 1.0, 0.45, sfxGain, 700, 'lowpass', 120); tone(70, t, 0.8, 'sine', 0.3, sfxGain, 35); },
+  ponte: (t) => { tone(160, t, 0.35, 'sawtooth', 0.07, sfxGain, 90); noise(t + 0.2, 0.5, 0.25, sfxGain, 900, 'lowpass', 200); },
+  gas: (t) => { noise(t, 0.6, 0.12, sfxGain, 3000, 'bandpass', 1500, 2); },
+  gelo: (t) => { for (let i = 0; i < 7; i++) tone(1800 + Math.random() * 2200, t + i * 0.03, 0.12, 'sine', 0.07); noise(t, 0.5, 0.2, sfxGain, 5000, 'highpass'); tone(600, t, 0.6, 'triangle', 0.1, sfxGain, 1500); },
+  hidra: (t) => { growl(t, 1.2, 80, 0.3, 11); growl(t + 0.15, 1.0, 120, 0.2, 16); noise(t, 0.9, 0.2, sfxGain, 600, 'lowpass', 150); },
+  cano: (t) => { tone(400, t, 0.3, 'square', 0.08, sfxGain, 380); noise(t, 0.5, 0.2, sfxGain, 2500, 'bandpass', 1200, 3); },
   susto: (t) => { tone(1800, t, 0.5, 'sine', 0.05, sfxGain, 1700); tone(1907, t, 0.5, 'sine', 0.05, sfxGain, 1800); },
 };
 
@@ -178,6 +189,8 @@ const AMBIENCE = {
   castle: { drone: [55, 82.4], wind: 300, events: ['gota', 'rangido', 'sussurro'] },
   forest: { drone: [65.4, 98], wind: 700, events: ['grilo', 'coruja', 'galho'] },
   forestNight: { drone: [49, 73.4], wind: 500, events: ['grilo', 'coruja', 'galho', 'sussurro'] },
+  swamp: { drone: [46.2, 69.3], wind: 420, events: ['coaxo', 'borbulha', 'mosquito', 'sussurro'] },
+  pipes: { drone: [41.2, 61.7], wind: 260, events: ['gota', 'cano', 'borbulha', 'rangido'] },
 };
 const AMB_EVENTS = {
   gota: (t) => { tone(1800 + Math.random() * 600, t, 0.15, 'sine', 0.08, ambGain, 900); },
@@ -186,6 +199,10 @@ const AMB_EVENTS = {
   grilo: (t) => { for (let i = 0; i < 6; i++) tone(4200, t + i * 0.06, 0.03, 'square', 0.025, ambGain); },
   coruja: (t) => { tone(420, t, 0.35, 'sine', 0.07, ambGain, 380); tone(400, t + 0.45, 0.5, 'sine', 0.07, ambGain, 350); },
   galho: (t) => { noise(t, 0.1, 0.12, ambGain, 1800, 'bandpass', 900, 3); },
+  coaxo: (t) => { tone(120, t, 0.15, 'square', 0.05, ambGain, 90); tone(125, t + 0.2, 0.15, 'square', 0.05, ambGain, 90); },
+  borbulha: (t) => { for (let i = 0; i < 4; i++) tone(200 + Math.random() * 200, t + i * 0.09, 0.1, 'sine', 0.06, ambGain, 600); },
+  mosquito: (t) => { tone(880, t, 0.8, 'sawtooth', 0.012, ambGain, 920); },
+  cano: (t) => { tone(300, t, 1.0, 'triangle', 0.04, ambGain, 290); noise(t, 0.6, 0.05, ambGain, 1500, 'bandpass', 800, 4); },
 };
 
 export function playAmbience(name) {
@@ -250,6 +267,22 @@ const THEMES = {
     bass: [40, R, R, R, 47, R, R, R, 36, R, R, R, 43, R, R, R, 38, R, R, R, 45, R, R, R, 35, R, R, R, 42, R, R, R],
     drums: 'k...h.h.s...h...',
     leadType: 'triangle',
+  },
+  swamp: {
+    bpm: 96,
+    lead: [62, R, R, 65, R, 63, R, 62, R, R, 60, R, 58, R, R, R, 62, R, R, 65, R, 67, R, 68, R, 67, R, 65, R, R, R, R,
+      70, R, R, 68, R, 67, R, 65, R, 63, R, 62, R, R, R, R, 60, R, 62, R, 63, R, 62, R, 58, R, 57, R, 62, R, R, R],
+    bass: [38, R, R, 38, R, R, 45, R, 36, R, R, 36, R, R, 43, R, 34, R, R, 34, R, R, 41, R, 33, R, R, 33, R, 45, R, R],
+    drums: 'k..h..s.k.hh..s.',
+    leadType: 'triangle',
+  },
+  pipes: {
+    bpm: 118,
+    lead: [57, R, 60, 57, R, 63, R, 62, 60, R, 57, R, 55, R, 57, R, 57, R, 60, 57, R, 64, R, 63, 62, R, 60, R, 62, R, R, R,
+      69, R, 67, R, 65, R, 63, R, 62, R, 63, R, 65, R, 62, R, 57, R, 60, R, 63, R, 62, R, 60, R, 58, R, 57, R, R, R],
+    bass: [33, R, 45, R, 33, R, 45, R, 31, R, 43, R, 31, R, 43, R, 29, R, 41, R, 29, R, 41, R, 28, R, 40, R, 32, R, 44, R],
+    drums: 'k.hsk.h.k.hsk.hs',
+    leadType: 'square',
   },
   chase: {
     bpm: 160,

@@ -1,6 +1,6 @@
 // Peças do cenário no estilo maquete: árvores, pedras, arbustos, tochas, fogueira, baús, portais.
 import * as THREE from '../vendor/three.module.min.js';
-import { roundedBox as rb, sphere, cylinder, cone, ico, part, pivot, bake, material } from './geo.js';
+import { roundedBox as rb, sphere, cylinder, cone, ico, capsule, part, pivot, bake, material } from './geo.js';
 
 // Copia as peças de um grupo temporário para dentro do grupo do cenário (para juntar tudo numa malha só)
 const tmpM = new THREE.Matrix4();
@@ -108,6 +108,66 @@ export function barrel(target, x, z, r) {
     part(g, cylinder(0.205, 0.205, 0.04, 10), 0x55585e, 'metal', 0, 0.1, 0);
     part(g, cylinder(0.205, 0.205, 0.04, 10), 0x55585e, 'metal', 0, 0.36, 0);
   }, x, z, r() * 6);
+}
+
+// ---------- Mundo 3: pântano e canos ----------
+export function swampTree(target, x, z, r) {
+  place(target, (g) => {
+    part(g, cylinder(0.08, 0.17, 1.1, 7), 0x3d3424, 'lit', 0, 0.55, 0, 0.08, 0, -0.06);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + r();
+      part(g, cylinder(0.04, 0.09, 0.4, 5), 0x352c1e, 'lit', Math.cos(a) * 0.14, 0.08, Math.sin(a) * 0.14, Math.sin(a) * 1.0, 0, -Math.cos(a) * 1.0);
+    }
+    part(g, cylinder(0.03, 0.06, 0.6, 5), 0x3d3424, 'lit', 0.22, 1.05, 0, 0, 0, -0.9);
+    part(g, cylinder(0.03, 0.05, 0.5, 5), 0x3d3424, 'lit', -0.2, 1.15, 0.05, 0, 0, 0.8);
+    const c = () => [0x3a5a2a, 0x2f4f22, 0x48683a][Math.floor(r() * 3)];
+    part(g, ico(0.38, 1), c(), 'lit', 0, 1.35, 0, 0, 0, 0, 1.2, 0.6, 1.2);
+    part(g, ico(0.25, 1), c(), 'lit', 0.42, 1.25, 0.05, 0, 0, 0, 1, 0.6, 1);
+    part(g, ico(0.22, 1), c(), 'lit', -0.38, 1.32, -0.05, 0, 0, 0, 1, 0.6, 1);
+    // musgo pendurado
+    for (let i = 0; i < 4; i++) part(g, rb(0.05, 0.35 + r() * 0.25, 0.05, 0.02), 0x6a8a4a, 'lit', (r() - 0.5) * 0.8, 1.0, (r() - 0.5) * 0.6);
+  }, x, z, r() * 6, 0.85 + r() * 0.3);
+}
+
+export function reeds(target, x, z, r) {
+  place(target, (g) => {
+    for (let i = 0; i < 6; i++) {
+      const rx = (r() - 0.5) * 0.4, rz = (r() - 0.5) * 0.4, h = 0.45 + r() * 0.35;
+      part(g, cylinder(0.015, 0.02, h, 4), 0x6a8a3a, 'lit', rx, h / 2, rz, (r() - 0.5) * 0.3, 0, (r() - 0.5) * 0.3);
+      if (r() < 0.6) part(g, capsule(0.03, 0.1), 0x5a3a20, 'lit', rx, h + 0.02, rz);
+    }
+  }, x, z, r() * 6);
+}
+
+export function lily(target, x, z, r) {
+  place(target, (g) => {
+    part(g, cylinder(0.14, 0.14, 0.02, 10), 0x3f8a2e, 'lit', 0, 0.04, 0);
+    if (r() < 0.4) part(g, sphere(0.04, 6, 4), 0xff9ad0, 'lit', 0.03, 0.08, 0);
+  }, x, z, r() * 6, 0.7 + r() * 0.6);
+}
+
+export function pipe(target, x, z, r) {
+  place(target, (g) => {
+    part(g, cylinder(0.09, 0.09, 1.2, 10), 0xb87333, 'metal', 0, 0.6, 0);
+    part(g, cylinder(0.12, 0.12, 0.08, 10), 0x8a5a2a, 'metal', 0, 0.25, 0);
+    part(g, cylinder(0.12, 0.12, 0.08, 10), 0x8a5a2a, 'metal', 0, 0.95, 0);
+    if (r() < 0.5) part(g, cylinder(0.07, 0.07, 0.12, 8), 0xd04030, 'lit', 0.12, 0.7, 0, 0, 0, Math.PI / 2);
+  }, x, z, r() * 6);
+}
+
+// ponte que afunda: tábuas (pântano) ou grade de metal (canos)
+export function plank(metalGrate = false) {
+  const g = new THREE.Group();
+  if (metalGrate) {
+    part(g, rb(0.96, 0.06, 0.96, 0.02), 0x5a5e66, 'metal', 0, 0.07, 0);
+    for (let i = -2; i <= 2; i++) part(g, rb(0.06, 0.08, 0.9, 0.01), 0x7a3a22, 'lit', i * 0.18, 0.11, 0);
+  } else {
+    for (let i = -1; i <= 1; i++) part(g, rb(0.95, 0.07, 0.28, 0.03), [0x8a6a42, 0x7a5a36, 0x94744a][i + 1], 'lit', 0, 0.08, i * 0.31, 0, 0, (i * 0.03));
+    part(g, cylinder(0.04, 0.04, 0.3, 6), 0x4a3420, 'lit', 0.42, 0, 0.42);
+    part(g, cylinder(0.04, 0.04, 0.3, 6), 0x4a3420, 'lit', -0.42, 0, -0.42);
+  }
+  bake(g);
+  return g;
 }
 
 // ---------- peças com partes que mudam (não são juntadas com o cenário) ----------

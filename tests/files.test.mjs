@@ -38,3 +38,8 @@ test('sem anúncios, sem rastreamento, sem login', () => {
     assert.ok(!all.includes(bad), `encontrado: ${bad}`);
   }
 });
+
+test('todo arquivo de código está no modo offline', () => {
+  const sw = read('sw.js');
+  for (const f of ['main', 'game', 'world', 'models', 'fx', 'geo', 'textures', 'props', 'inventory', 'input', 'ui', 'audio', 'levels', 'progress', 'save', 'mundo3']) assert.ok(sw.includes(`'src/${f}.js'`), `sw.js sem src/${f}.js`);
+});

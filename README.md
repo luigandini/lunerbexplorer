@@ -55,4 +55,5 @@ npm test          # testes automáticos das fases, save, Forja e arquivos
 npm run smoke     # abre o jogo num Chrome de verdade, joga um pouco e tira fotos (precisa de npm i)
 node tools/smoke-armas.mjs   # testa bombas, choque, turbina, loja, voltar de sala e morte
 node tools/smoke-mundo2.mjs  # testa o Mundo 2, a Mãe-Teia, o Feligon e o Ancião Oco
+node tools/smoke-mundo3.mjs  # testa pontes, névoa, gás, Sapo-Lodo Rei, resgate do Dait e Hidra
 ```

@@ -13,11 +13,13 @@
 //             z  zumbi mutante   a  zumbi de armadura   s  aranha   m  morcego de brasa
 //             D  portão de raízes (só o Feligon abre)
 //             c  cogumelo-espora   e  planta-espinho   K  chefão da fase   F  casulo (Feligon preso)
+//   Pântano:  b  ponte que afunda (passe rápido!)   q  gás tóxico (só o Dait respira)
+//             p  sapinho do lodo   o  bolha de lodo (se divide em duas)   Z  jaula (Dait preso)
 
 export const WORLDS = [
   { id: 1, name: 'Fortaleza de Cinzarocha', ready: true },
   { id: 2, name: 'Bosque dos Sussurros', ready: true },
-  { id: 3, name: 'Pântano do Lodo Negro', ready: false },
+  { id: 3, name: 'Pântano do Lodo Negro', ready: true },
   { id: 4, name: 'Torre do Alquimista', ready: false },
 ];
 
@@ -382,10 +384,162 @@ export const LEVELS = [
       ] },
     ],
   },
+  {
+    id: 5,
+    kind: 'fase',
+    world: 3,
+    difficulty: 1.6,
+    title: 'Águas Venenosas',
+    theme: 'swamp',
+    hero: 'lunerb',
+    music: 'swamp',
+    ambience: 'swamp',
+    weaponReward: 2,
+    boss: 'saporei',
+    intro: [
+      { who: 'Feligon', text: 'Que cheiro horrível... é aqui que o lodo nasce.' },
+      { who: 'Lunerb', text: 'Cuidado com as pontes. Elas parecem bem velhas!' },
+    ],
+    rooms: [
+      { name: 'Margem Podre', map: [
+        'YYYYYYYYYYYYY',
+        'YP,,,~~~,,,pY',
+        'Y,,,,bbb,,,,Y',
+        'Y,U,,~~~,o,,X',
+        'Y,,,,~~~,,,,Y',
+        'Y,p,,~~~,,U,Y',
+        'Y,,,,bbb,,B,Y',
+        'Y,,R,~~~,,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Pontes Bambas', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,,~~~~~~,HY',
+        'Y,,,bbb~~~,pY',
+        'N,,,~~b~~~,,Y',
+        'Y,,,~~bbbb,pY',
+        'Y,,,~~~~~b,oX',
+        'Y,,,bbbbbb,,Y',
+        'Y,C,~~~~~~,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Névoa Verde', fog: true, map: [
+        'YYYYYYYYYYYYY',
+        'Y,,,R,,,Y,QSY',
+        'Y,,,,,o,,,RRY',
+        'N,,,,Y,,p,,,Y',
+        'Y,,U,,,,,,,,Y',
+        'Y,,,,,o,,Y,,X',
+        'Y,p,,Y,,,,,,Y',
+        'Y,,,,,,,B,,,Y',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Ilha do Mercador', loot: 'bombas', map: [
+        'YYYYYYYYYYYYY',
+        'Y,,~~~,,,~~JY',
+        'Y,,~~~,p,~~,Y',
+        'N,,,b,,,,,b,Y',
+        'Y,,,~~,C,~~oY',
+        'Y,,,~~,,,~~,X',
+        'YV,,b,,o,,b,Y',
+        'Y,,~~~,,,~~HY',
+        'YYYYYYYYYYYYY',
+      ] },
+      { name: 'Trono do Sapo-Lodo', map: [
+        'YYYYYYYYYYYYYYY',
+        'Y~~,,,,,,,,,~~Y',
+        'Y~,,,,,,,,,,,~Y',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'N,,,,,,K,,,,,,E',
+        'Y,,,,,,,,,,,,,Y',
+        'Y,,,,,,,,,,,,,Y',
+        'Y~,,,,,,,,,,,~Y',
+        'Y~~,,,T,T,,,~~Y',
+        'YYYYYYYYYYYYYYY',
+      ] },
+    ],
+  },
+  {
+    id: 6,
+    kind: 'fase',
+    world: 3,
+    difficulty: 1.75,
+    title: 'O Encanamento',
+    theme: 'pipes',
+    hero: 'lunerb',
+    music: 'pipes',
+    ambience: 'pipes',
+    weaponReward: 2,
+    boss: 'hidra',
+    intro: [
+      { who: 'Lunerb', text: 'Canos por todo lado... e todos levam lodo pro rio.' },
+      { who: 'Feligon', text: 'Escuta! Tem alguém batendo nos canos lá na frente!' },
+    ],
+    rooms: [
+      { name: 'Boca do Cano', map: [
+        '#############',
+        '#P....~~....#',
+        '#.....~~.a..#',
+        '#..T..bb....X',
+        '#.....~~..o.#',
+        '##.####~....#',
+        '#.o...~~..T.#',
+        '#.....bb.B..#',
+        '#############',
+      ] },
+      { name: 'Galeria das Bolhas', map: [
+        '#############',
+        '#S#..o......#',
+        '#.Q...##..m.#',
+        '####..##....#',
+        'N.....o.....X',
+        '#..~~~~~~...#',
+        '#..bbbbbb.o.#',
+        '#.C~~~~~~.H.#',
+        '#############',
+      ] },
+      { name: 'Sala das Válvulas', map: [
+        '#############',
+        '#....a....Z.#',
+        '#.T.......~~#',
+        'N....##.o...#',
+        '#....##..z..#',
+        '#.......##..X',
+        '#.o..m..##..#',
+        '#..T......B.#',
+        '#############',
+      ] },
+      { name: 'Câmara de Gás', loot: 'superbomba', map: [
+        '#############',
+        '#qqq...o...J#',
+        '#qBq.......q#',
+        '#qqq..##..qq#',
+        'N.....##....#',
+        '#....o.....aX',
+        '#.....z..qqq#',
+        '#.V..C...qHq#',
+        '#############',
+      ] },
+      { name: 'Reservatório da Hidra', map: [
+        '###############',
+        '#......T......#',
+        '#.............#',
+        '#.....~~~.....#',
+        '#....~~~~~....#',
+        'N....~~K~~....E',
+        '#....~~~~~....#',
+        '#.....~~~.....#',
+        '#.............#',
+        '#......T......#',
+        '###############',
+      ] },
+    ],
+  },
 ];
 
 export const SOLID = new Set(['#', 'T', 'Q', 'Y', 'R', 'U', '~', 'D']);
-export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego', c: 'cogumelo', e: 'espinho' };
+export const ENEMY_CHARS = { z: 'zumbi', a: 'armadura', s: 'aranha', m: 'morcego', c: 'cogumelo', e: 'espinho', p: 'sapinho', o: 'bolha' };
 export const ROOM_SPACING = 22; // distância entre as maquetes no "espaço"
 
 export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
@@ -393,7 +547,7 @@ export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
   const w = rows[0].length;
   const out = {
     index, w, h, tiles: [], entry: null, isStart: false, portal: null, exit: null,
-    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null, vines: [],
+    enemies: [], chests: [], checkpoints: [], torches: [], cracks: [], hearts: [], boss: null, spawners: [], lake: [], merchant: null, cocoon: null, vines: [], bridges: [], gas: [], cage: null,
   };
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -413,6 +567,9 @@ export function parseRoom(rows, index = 0, loot = null, bossType = 'capitao') {
       else if (c === 'J') { out.chests.push({ kind: 'arma-nova', x, y }); tile = '.'; }
       else if (c === 'V') { out.merchant = { x, y }; tile = '.'; }
       else if (c === 'F') { out.cocoon = { x, y }; tile = ','; }
+      else if (c === 'Z') { out.cage = { x, y }; tile = '.'; }
+      else if (c === 'b') { out.bridges.push({ x, y }); }
+      else if (c === 'q') { out.gas.push({ x, y }); }
       else if (c === 'C') { out.checkpoints.push({ x, y }); }
       else if (c === 'T') { out.torches.push({ x, y }); }
       else if (c === 'Q') { out.cracks.push({ x, y }); }

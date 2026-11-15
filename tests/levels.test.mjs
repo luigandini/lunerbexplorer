@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS, parseLevel, reachable, TOTAL_PHASES, WORLDS, SOLID } from '../src/levels.js';
 
-const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceFD'.split(''));
+const VALID = new Set('#.,LWTQCEBGSHPNXzasmKYRUfg~OJVceFDbqpoZ'.split(''));
 
 test('o jogo tem 8 fases planejadas em 4 mundos, mais o prólogo', () => {
   assert.equal(TOTAL_PHASES, 8);
@@ -148,4 +148,20 @@ test('a dificuldade aumenta de fase em fase', () => {
 
 test('a lava e o lago contam como obstáculo', () => {
   assert.ok(SOLID.has('~'));
+});
+
+test('Mundo 3: pontes, névoa, jaula do Dait e gás só depois do resgate', () => {
+  assert.ok(WORLDS[2].ready);
+  const f5 = LEVELS.find((l) => l.id === 5), f6 = LEVELS.find((l) => l.id === 6);
+  assert.equal(f5.boss, 'saporei');
+  assert.equal(f6.boss, 'hidra');
+  const p5 = parseLevel(f5), p6 = parseLevel(f6);
+  assert.ok(p5.rooms.some((r) => r.bridges.length), 'fase 5 tem pontes que afundam');
+  assert.ok(f5.rooms.some((r) => r.fog), 'fase 5 tem névoa');
+  const cageRoom = p6.rooms.findIndex((r) => r.cage);
+  assert.ok(cageRoom >= 0 && cageRoom < p6.rooms.length - 1, 'o Dait é resgatado antes da Hidra');
+  p6.rooms.forEach((r, i) => { if (r.gas.length) assert.ok(i > cageRoom, 'gás só depois do Dait'); });
+  const reach = reachable(p6.rooms[cageRoom]);
+  const c = p6.rooms[cageRoom].cage;
+  assert.ok([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach.has(c.x + dx, c.y + dy)), 'dá para chegar na jaula');
 });

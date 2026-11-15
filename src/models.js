@@ -396,3 +396,112 @@ export function buildCasulo() {
   bake(g);
   return g;
 }
+
+// ---------- Mundo 3: Pântano do Lodo Negro ----------
+
+// Sapinho do lodo: pula atrás do herói
+export function buildSapinho() {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  part(body, sphere(0.22, 12, 10), 0x4f8a2a, 'lit', 0, 0.2, 0, 0, 0, 0, 1.15, 0.8, 1.2);
+  part(body, sphere(0.16, 10, 8), 0xc8e070, 'lit', 0, 0.16, 0.08, 0, 0, 0, 1.1, 0.7, 1);
+  for (const sx of [-0.1, 0.1]) {
+    part(body, sphere(0.075, 10, 8), 0x4f8a2a, 'lit', sx, 0.36, 0.1);
+    part(body, sphere(0.05, 8, 6), 0xfff27a, 'glow', sx, 0.38, 0.15);
+    part(body, sphere(0.025, 6, 4), 0x101010, 'lit', sx, 0.39, 0.19);
+  }
+  part(body, rb(0.2, 0.02, 0.02, 0.008), 0x2a3a14, 'lit', 0, 0.2, 0.26);
+  for (const [x, z] of [[0.08, -0.1], [-0.12, -0.04], [0.02, 0.06]]) part(body, sphere(0.035, 6, 4), 0x2f5a1a, 'lit', x, 0.33, z);
+  const legs = [];
+  for (const sx of [-0.17, 0.17]) {
+    const leg = pivot(body, sx, 0.1, -0.05);
+    part(leg, sphere(0.09, 8, 6), 0x3f7a22, 'lit', 0, 0, 0, 0, 0, 0, 0.8, 0.6, 1.4);
+    part(leg, rb(0.12, 0.02, 0.14, 0.01), 0x3f7a22, 'lit', 0, -0.08, 0.08);
+    legs.push(leg);
+  }
+  bake(root);
+  return { root, body, legs };
+}
+
+// Bolha de lodo: geleia verde que se divide em duas
+export function buildBolha(mini = false) {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const inner = new THREE.Group();
+  body.add(inner);
+  part(inner, sphere(0.06, 8, 6), 0x0d1a0a, 'lit', -0.09, 0.32, 0.25);
+  part(inner, sphere(0.06, 8, 6), 0x0d1a0a, 'lit', 0.09, 0.32, 0.25);
+  part(inner, sphere(0.025, 6, 4), 0xffffff, 'glow', -0.08, 0.34, 0.3);
+  part(inner, sphere(0.025, 6, 4), 0xffffff, 'glow', 0.1, 0.34, 0.3);
+  part(inner, sphere(0.13, 10, 8), 0x7dff3a, 'glow', 0, 0.22, 0);
+  bake(root);
+  const shell = new THREE.Mesh(sphere(0.3, 16, 12), material(0x36c42a, 'lit', 0.72));
+  shell.position.y = 0.26; shell.scale.set(1.1, 0.85, 1.1);
+  inner.add(shell);
+  if (mini) inner.scale.setScalar(0.55);
+  return { root, body, shell, legs: [] };
+}
+
+// Sapo-Lodo Rei: sapo enorme com coroa enferrujada
+export function buildSapoRei() {
+  const s = buildSapinho();
+  part(s.body, cylinder(0.11, 0.13, 0.08, 8), 0xb08a3a, 'metal', 0, 0.43, -0.02);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    part(s.body, cone(0.025, 0.08, 4), 0xd8b04a, 'metal', Math.cos(a) * 0.1, 0.5, -0.02 + Math.sin(a) * 0.1);
+  }
+  part(s.body, sphere(0.03, 6, 4), 0xff3a6a, 'glow', 0, 0.45, 0.1);
+  for (const [x, y, z] of [[0.15, 0.28, -0.12], [-0.17, 0.25, -0.1], [0, 0.33, -0.18]]) part(s.body, sphere(0.05, 6, 4), 0x9dff3a, 'glow', x, y, z);
+  bake(s.root);
+  return s;
+}
+
+// Hidra de Lodo: três cabeças que saem do reservatório
+export function buildHidraHead(i) {
+  const root = new THREE.Group();
+  const neck = new THREE.Group();
+  root.add(neck);
+  for (let k = 0; k < 5; k++) part(neck, sphere(0.2 - k * 0.012, 10, 8), k % 2 ? 0x2a7a2a : 0x2f8a30, 'lit', 0, 0.15 + k * 0.28, -k * 0.05);
+  const head = pivot(neck, 0, 1.45, 0.05);
+  part(head, sphere(0.26, 12, 10), 0x2f8a30, 'lit', 0, 0, 0.05, 0, 0, 0, 1, 0.8, 1.3);
+  part(head, rb(0.34, 0.1, 0.32, 0.05), 0x1f6a24, 'lit', 0, -0.12, 0.22);
+  for (const sx of [-0.12, 0.12]) {
+    part(head, sphere(0.06, 8, 6), [0xff4a3a, 0xffd23a, 0xb070ff][i], 'glow', sx, 0.1, 0.22);
+    part(head, cone(0.04, 0.16, 5), 0xd8d0a0, 'lit', sx, 0.22, -0.05, -0.4, 0, sx > 0 ? -0.3 : 0.3);
+  }
+  for (const sx of [-0.06, 0.06]) part(head, cone(0.02, 0.07, 4), 0xf2f2e8, 'lit', sx, -0.2, 0.36, Math.PI, 0, 0);
+  bake(root);
+  return { root, neck, head };
+}
+
+export function buildHidraBody() {
+  const g = new THREE.Group();
+  part(g, sphere(0.9, 16, 10), 0x1f5a22, 'lit', 0, -0.2, 0, 0, 0, 0, 1.3, 0.55, 1.3);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    part(g, sphere(0.16, 8, 6), 0x7dff3a, 'glow', Math.cos(a) * 0.85, 0.12, Math.sin(a) * 0.85);
+  }
+  bake(g);
+  return g;
+}
+
+// Jaula de canos (o Dait fica preso aqui)
+export function buildJaula() {
+  const g = new THREE.Group();
+  const frame = new THREE.Group();
+  part(frame, cylinder(0.45, 0.45, 0.08, 12), 0x5a5e66, 'metal', 0, 0.04, 0);
+  part(frame, cylinder(0.45, 0.45, 0.08, 12), 0x5a5e66, 'metal', 0, 1.4, 0);
+  part(frame, sphere(0.08, 8, 6), 0xff5a3a, 'glow', 0, 1.5, 0);
+  bake(frame);
+  g.add(frame);
+  const bars = new THREE.Group();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    part(bars, cylinder(0.025, 0.025, 1.36, 5), 0x8a6a4a, 'metal', Math.cos(a) * 0.42, 0.72, Math.sin(a) * 0.42);
+  }
+  bake(bars);
+  g.add(bars);
+  return { group: g, bars, frame };
+}

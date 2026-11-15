@@ -2,7 +2,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { parseLevel, getLevel, SOLID, ROOM_SPACING } from './levels.js';
 import { buildRoom, sharedMaterials } from './world.js';
-import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCoracao, buildCogumelo, buildEspinho, buildMaeTeia, buildAnciao } from './models.js';
+import { buildHero, buildZumbi, buildAranha, buildMorcego, buildCristal, buildCoracao, buildCogumelo, buildEspinho, buildMaeTeia, buildAnciao, buildSapinho, buildBolha } from './models.js';
+import { Mundo3, hidraGlow } from './mundo3.js';
 import { material, applyRim, groundGlow } from './geo.js';
 import { tex } from './textures.js';
 import { FX } from './fx.js';
@@ -30,6 +31,9 @@ const EDEF = {
   morcego: { hp: 2, armor: 0, speed: 2.4, r: 0.3, aggro: 6.5, drop: 1, fly: true, build: buildMorcego },
   cogumelo: { hp: 3, armor: 0, speed: 1.05, r: 0.32, aggro: 6, drop: 2, build: buildCogumelo },
   espinho: { hp: 4, armor: 0, speed: 0, r: 0.36, aggro: 7.5, drop: 2, still: true, build: buildEspinho },
+  sapinho: { hp: 3, armor: 0, speed: 2.7, r: 0.3, aggro: 6.5, drop: 1, hop: true, build: buildSapinho },
+  bolha: { hp: 5, armor: 0, speed: 1.0, r: 0.36, aggro: 6, drop: 2, build: () => buildBolha() },
+  bolhinha: { hp: 1.5, armor: 0, speed: 1.9, r: 0.22, aggro: 7, drop: 0, build: () => buildBolha(true) },
 };
 
 // cores do contorno de cada personagem (decididas com o Luis)
@@ -39,21 +43,31 @@ const BOSS = {
   capitao: { name: 'CAPITÃO DE FERRO', scale: 2.8, hp: 32, armor: 26, r: 0.8 },
   maeteia: { name: 'MÃE-TEIA', scale: 2.7, hp: 42, armor: 0, r: 0.85 },
   anciao: { name: 'ANCIÃO OCO', scale: 2.1, hp: 30, armor: 30, r: 1.0 },
+  saporei: { name: 'SAPO-LODO REI', scale: 4, hp: 50, armor: 0, r: 1.1 },
+  hidra: { name: 'HIDRA DE LODO', scale: 1, hp: 54, armor: 0, r: 0.85 },
 };
 
 const THEMES = {
   forest: { bg: 'bgForest', hemi: [0xbfe3ff, 0x3a4a2a, 1.45], sun: [0xfff0d0, 2.6], player: 0, torch: 0, exposure: 1.2 },
   forestNight: { bg: 'bgForest', hemi: [0x9ab8e8, 0x2a3a24, 1.35], sun: [0xbcd0ff, 2.0], player: 4, torch: 7, exposure: 1.35 },
   castle: { bg: 'bgCastle', hemi: [0xb4c0f0, 0x40363a, 1.6], sun: [0xdde4ff, 2.4], player: 4, torch: 7, exposure: 1.45 },
+  swamp: { bg: 'bgSwamp', hemi: [0xb0e0b8, 0x2a3a20, 1.45], sun: [0xe0f4c8, 2.3], player: 3.5, torch: 6.5, exposure: 1.3 },
+  pipes: { bg: 'bgPipes', hemi: [0xe0d0b8, 0x3a3028, 1.55], sun: [0xffe4c0, 2.3], player: 4, torch: 7, exposure: 1.4 },
 };
 
 // cada herói tem a arma dele, todas com a MESMA força (só muda a cor e o som)
 const HERO_STYLE = {
   lunerb: { core: 0xffe27a, outer: 0xff5a14, beam: 0xff2020, spark: 0xff3030, shot: 'fogo', melee: 'soco' },
   feligon: { core: 0xd8ffb0, outer: 0x5cdf3a, beam: 0x3dff4a, spark: 0x7dff6a, shot: 'folha', melee: 'soco' },
-  dait: { core: 0xe6ffff, outer: 0x2ee6ff, beam: 0x22d8ff, spark: 0x7af4ff, shot: 'laser', melee: 'soco' },
+  dait: { core: 0xe6ffff, outer: 0x2ee6ff, beam: 0x22d8ff, spark: 0x7af4ff, shot: 'pulso', melee: 'soco' },
 };
 const styleOf = (h) => HERO_STYLE[h.id] || HERO_STYLE.lunerb;
+// poder de cada amigo quando o jogador manda (botão verde)
+const POWER = {
+  feligon: { color: 0x7dff6a, call: '🌿 Feligon, RAÍZES!' },
+  lunerb: { color: 0xb070ff, call: '⚡ Lunerb, RAIO NEGRO!' },
+  dait: { color: 0x2ee6ff, call: '❄️ Dait, PULSO CIANO!' },
+};
 
 export class Game {
   constructor({ renderer, ui, input }) {
@@ -69,6 +83,11 @@ export class Game {
     this.lowQuality = false;
     this.fpsT = 0; this.fpsN = 0; this.fpsChecks = 0;
   }
+
+  // ajudantes: todos os heróis do time que não estão no controle (nem desmaiados)
+  get friend() { return this.heroes ? this.heroes.find((h) => h !== this.player && !h.fainted) || null : null; }
+  set friend(v) { /* calculado a partir do time */ }
+  helpers() { return this.heroes ? this.heroes.filter((h) => h !== this.player && !h.fainted) : []; }
 
   resize() {
     if (this.room && !this.cine) this.viewTarget = this.fitRoom(this.room);
@@ -119,7 +138,7 @@ export class Game {
     for (let i = 0; i < n; i++) { pts[i * 3] = Math.random() * 16 - 1.5; pts[i * 3 + 1] = Math.random() * 4 - 1.5; pts[i * 3 + 2] = Math.random() * 12 - 1.5; }
     const pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(pts, 3));
-    this.dust = new THREE.Points(pg, new THREE.PointsMaterial({ color: def.theme === 'forest' ? 0xd8ff7a : 0xffb070, size: 0.07, transparent: true, opacity: 0.8 }));
+    this.dust = new THREE.Points(pg, new THREE.PointsMaterial({ color: { forest: 0xd8ff7a, swamp: 0xb8ff6a, pipes: 0xffd08a }[def.theme] || 0xffb070, size: 0.07, transparent: true, opacity: 0.8 }));
     scene.add(this.dust);
 
     // salas
@@ -138,6 +157,10 @@ export class Game {
       for (const e of pr.enemies) room.enemies.push(this.makeEnemy(e.type, off.x + e.x + 0.5, off.z + e.y + 0.5, false));
       if (pr.boss) room.boss = this.makeBoss(off.x + pr.boss.x + 0.5, off.z + pr.boss.y + 0.5, pr.boss.type);
       if (vis.exit) this.setGateLocked(vis.exit, !!room.boss);
+      if (vis.cage) {
+        if (save.friends.includes('dait')) { vis.cage.open = true; vis.cage.bars.visible = false; vis.cage.dait.root.visible = false; }
+        else if (vis.portal) this.setGateLocked(vis.portal, true);
+      }
       if (vis.merchant) { vis.merchant.here = testMode || Math.random() < 0.55; vis.merchant.group.visible = vis.merchant.here; }
       return room;
     });
@@ -147,7 +170,7 @@ export class Game {
     this.player = this.makeHero(def.hero, def.hero === 'lunerb' && !this.isPrologue ? save.weapons : 0);
     this.heroes.push(this.player);
     this.updateGuns();
-    this.pendingFriend = !this.isPrologue && def.world >= 2 && save.friends.includes('feligon');
+    this.pendingFriends = this.isPrologue ? [] : [['feligon', 2], ['dait', 3]].filter(([id, w]) => def.world >= w && save.friends.includes(id)).map(([id]) => id);
 
     this.shots = []; this.pickups = []; this.lasers = []; this.bombs = []; this.bolts = []; this.scorches = [];
     this.aim = null; this.beam = null; this.weaponCd = 0; this.arenaItem = null; this.eshots = []; this.friend = null; this.friendAim = null;
@@ -158,11 +181,12 @@ export class Game {
     this.time = 0; this.shake = 0;
     this.frozen = true; this.cine = null; this.trans = null; this.ended = false;
     this.tips = { turbo: false };
+    this.setFog(false);
     this.lightTimer = 0;
-    if (this.pendingFriend) {
-      this.spawnFriend(this.player.x - 0.8, this.player.z);
+    for (const id of this.pendingFriends) this.spawnFriend(this.player.x - 0.8, this.player.z, id);
+    {
       const lead = this.heroes.find((h) => h.id === save.lead);
-      if (lead && lead !== this.player) { this.friend = this.player; this.player = lead; }
+      if (lead && lead !== this.player) this.player = lead;
     }
     this.enterRoom(0, true);
     this.view = { ...this.viewTarget };
@@ -197,6 +221,7 @@ export class Game {
     }
     this.scene = null;
     this.room = null;
+    this.setFog(false);
     this.ui.bossBar(null);
   }
 
@@ -237,9 +262,8 @@ export class Game {
     for (const h of this.heroes) {
       if (h === p) continue;
       if (h.fainted) { h.fainted = false; h.hp = MAX_HP; h.inv = 1; if (!first) this.ui.toast(`${h.name} acordou!`, 1400); }
-      this.friend = h;
       h.cmd = null; h.restT = 0;
-      this.placeFriendNear(p.x, p.z);
+      this.placeFriendNear(p.x, p.z, false, h);
     }
     if (this.heroes.length > 1) { this.ui.setControls({ attack: true, turbo: true, friend: true }); this.refreshPortraits(); }
     room.enterT = 0; room.spawnT = 0;
@@ -258,6 +282,8 @@ export class Game {
     this.lightTimer = 0;
     if (!first && Math.random() < 0.4) setTimeout(() => this.running && sfx('susto'), 600);
     this.ui.roomCounter(i + 1, this.rooms.length, room.name);
+    this.setFog(!!(this.def.rooms[i] && this.def.rooms[i].fog));
+    if (this.fogOn && !first) this.ui.toast('Névoa verde... fique de olho!', 1400);
   }
 
   // Enquadra a sala inteira na tela (câmera fixa e distante)
@@ -302,9 +328,14 @@ export class Game {
   }
 
   // troca quem o jogador controla (rostinho no canto ou 3 toques no botão do amigo)
-  switchHero(auto = false) {
-    const other = this.heroes.find((h) => h !== this.player && !h.fainted);
-    if (!other || this.cine || this.trans) return false;
+  switchHero(auto = false, target = null) {
+    const list = this.helpers();
+    if (!list.length || this.cine || this.trans) return false;
+    let other = target && list.includes(target) ? target : null;
+    if (!other) {
+      const i = this.heroes.indexOf(this.player);
+      for (let k = 1; k <= this.heroes.length && !other; k++) { const h = this.heroes[(i + k) % this.heroes.length]; if (list.includes(h)) other = h; }
+    }
     this.stopBeam();
     this.cancelAim();
     this.friendAim = null;
@@ -313,7 +344,6 @@ export class Game {
     prev.cmd = null; prev.charging = false; prev.dash = 0;
     other.cmd = null; other.restT = 0; other.inv = Math.max(other.inv, auto ? 1.5 : 0.4);
     this.player = other;
-    this.friend = prev.fainted ? null : prev;
     this.updateGuns();
     this.refreshSlots();
     this.ui.setControls({ attack: true, turbo: true, friend: !!this.friend });
@@ -334,7 +364,7 @@ export class Game {
     if (!this.heroes || this.heroes.length < 2) { this.ui.portraits(null); return; }
     this.ui.portraits(this.heroes.map((h) => ({ id: h.id, name: h.name, icon: this.heroIcon(h), hp: h.hp, max: MAX_HP, fainted: h.fainted, active: h === this.player })), (i) => {
       const h = this.heroes[i];
-      if (h !== this.player && !h.fainted) this.switchHero();
+      if (h !== this.player && !h.fainted) this.switchHero(false, h);
       else if (h.fainted) this.ui.toast(`${h.name} está desmaiado. Ele acorda na próxima sala.`, 1500);
     });
   }
@@ -359,19 +389,21 @@ export class Game {
 
   makeBoss(x, z, type = 'capitao') {
     const B = BOSS[type];
-    const m = type === 'maeteia' ? buildMaeTeia() : type === 'anciao' ? buildAnciao() : buildZumbi({ armor: true, boss: true });
+    const m = type === 'maeteia' ? buildMaeTeia() : type === 'anciao' ? buildAnciao() : type === 'saporei' || type === 'hidra' ? this.makeBossM3(type) : buildZumbi({ armor: true, boss: true });
     m.root.scale.setScalar(B.scale);
     applyRim(m.root, RIM.chefe, 0.95);
-    m.glow = groundGlow(0x5cff3a, 1.3, 0.45);
+    m.glow = type === 'hidra' ? hidraGlow() : groundGlow(0x5cff3a, 1.3, 0.45);
     this.scene.add(m.glow);
     m.root.visible = false;
     this.scene.add(m.root);
     m.root.position.set(x, 0, z);
-    return {
+    const b = {
       type, name: B.name, scale: B.scale, x, z, hx: x, hz: z, hp: B.hp, maxHp: B.hp, armor: B.armor, maxArmor: Math.max(1, B.armor), m, alive: true,
       state: 'dormindo', t: 0, cycle: 0, r: B.r, kvx: 0, kvz: 0, face: -Math.PI / 2, hit: 0, chargeDx: 0, chargeDz: 0,
       spawnT: 0, hordeDone: false, ring: null,
     };
+    this.initBossM3(b);
+    return b;
   }
 
   // nível de arma do time: o que o Lunerb já conquistou vale para todos
@@ -461,7 +493,10 @@ export class Game {
       this.updateShots(dt);
       this.updateBombs(dt);
       this.updateEShots(dt);
-      if (this.friend) this.updateFriend(dt);
+      const hs = this.helpers();
+      hs.forEach((f, i) => this.updateFriend(dt, f, i));
+      if (hs.length) this.ui.friendCooldown(Math.min(...hs.map((f) => f.cd)));
+      if (this.def.world >= 3) this.updateMundo3(dt);
       this.updateBolts(dt);
       this.updateBeam(dt);
       this.updatePickups(dt);
@@ -473,6 +508,7 @@ export class Game {
     this.fx.update(dt);
     this.updateLights(dt);
     this.updateCamera(dt);
+    this.updateFog();
     this.input.consume();
     this.hud();
   }
@@ -558,10 +594,10 @@ export class Game {
     if (t2 === 'L' && p.dash <= 0) {
       this.hurtPlayer(1, 0, 0, true);
       p.x = p.safeX; p.z = p.safeZ;
-      this.fx.sparks(p.x, 0.3, p.z, 0xff7a1a, 10);
+      this.fx.sparks(p.x, 0.3, p.z, this.def.world >= 3 ? 0x7dff3a : 0xff7a1a, 10);
     } else if (t2 !== 'L') {
       const near = this.tileAt(p.x + 0.45, p.z) === 'L' || this.tileAt(p.x - 0.45, p.z) === 'L' || this.tileAt(p.x, p.z + 0.45) === 'L' || this.tileAt(p.x, p.z - 0.45) === 'L';
-      if (!near) { p.safeX = p.x; p.safeZ = p.z; }
+      if (!near && t2 !== 'b' && t2 !== 'q') { p.safeX = p.x; p.safeZ = p.z; }
     }
 
     if (this.isPrologue) return; // no prólogo o Lucas só pode fugir
@@ -739,7 +775,7 @@ export class Game {
       return;
     }
     if (!this.isPrologue) {
-      this.ui.bigText(this.heroes.length > 1 ? 'Os dois desmaiaram... a fase recomeça!' : 'O Lunerb desmaiou... a fase recomeça!', 2200);
+      this.ui.bigText(this.heroes.length > 2 ? 'Todos desmaiaram... a fase recomeça!' : this.heroes.length > 1 ? 'Os dois desmaiaram... a fase recomeça!' : 'O Lunerb desmaiou... a fase recomeça!', 2200);
       this.frozen = true;
       setTimeout(() => { if (this.running && this.onDeath) this.onDeath(this.result, this.inv); }, 2300);
       return;
@@ -771,7 +807,7 @@ export class Game {
     e.voice = (e.voice ?? 1 + Math.random() * 4) - dt;
     if (e.voice <= 0) {
       e.voice = (e.awake ? 2.5 : 5) + Math.random() * 4;
-      if (e.awake || dist < 7) sfx({ zumbi: 'zumbi', armadura: 'zumbi', aranha: 'aranha', morcego: 'morcego', cogumelo: 'cogumelo', espinho: 'espinho' }[e.type] || 'zumbi');
+      if (e.awake || dist < 7) sfx({ zumbi: 'zumbi', armadura: 'zumbi', aranha: 'aranha', morcego: 'morcego', cogumelo: 'cogumelo', espinho: 'espinho', sapinho: 'sapo', bolha: 'bolha', bolhinha: 'bolha' }[e.type] || 'zumbi');
     }
     if (!e.chase) {
       if (!e.awake && dist < d.aggro && !p.dead) e.awake = true;
@@ -857,6 +893,8 @@ export class Game {
     if (!e.alive) return;
     const isBoss = !!e.name;
     if (isBoss && (e.state === 'intro' || e.state === 'dormindo')) return;
+    if (e.type === 'hidra') return this.hidraDamage(e, dmg);
+    if (e.type === 'saporei' && e.state === 'cansado') dmg *= 1.6; // cansado: leva mais dano
     e.hit = 0.15;
     const kb = isBoss ? (e.type === 'anciao' ? 0 : 0.6) : 4;
     e.kvx = (kx || 0) * kb; e.kvz = (kz || 0) * kb;
@@ -887,7 +925,9 @@ export class Game {
     this.player.turbo = Math.min(3, this.player.turbo + 0.45);
     if (e.name) { this.bossDefeated(); return; }
     if (e.type === 'cogumelo') this.spores(e.x, e.z);
+    if (e.type === 'bolha') this.splitBolha(e);
     if (e.rootMesh) e.rootMesh.visible = false;
+    if (e.iceMesh) e.iceMesh.visible = false;
     const n = e.def.drop + (Math.random() < 0.5 ? 1 : 0);
     for (let i = 0; i < n; i++) this.dropCrystal(e.x, e.z);
     if (this.player.hp < MAX_HP && Math.random() < 0.15) this.dropHeart(e.x, e.z);
@@ -917,7 +957,8 @@ export class Game {
     const dx = p.x - b.x, dz = p.z - b.z, dist = Math.hypot(dx, dz);
     const broken = b.armor <= 0;
     if (b.state === 'dormindo') {
-      if (dist < 6.5 && !p.dead && this.room.enterT > 0.6) this.startBossIntro();
+      const wake = Math.hypot(p.x - b.hx, p.z - b.hz);
+      if (wake < 6.5 && !p.dead && this.room.enterT > 0.6) this.startBossIntro();
       return;
     }
     if (p.dead) return;
@@ -925,6 +966,7 @@ export class Game {
     if (b.rootT > 0) { b.moving = false; if (Math.random() < 0.2) this.fx.sparks(b.x, 0.5, b.z, 0x7dff6a, 1); this.ui.bossBar(b.name, b.armor / b.maxArmor, b.hp / b.maxHp); return; }
     if (b.type === 'maeteia') return this.updateMaeTeia(b, dt, dx, dz, dist);
     if (b.type === 'anciao') return this.updateAnciao(b, dt, dx, dz, dist);
+    if (b.type === 'saporei' || b.type === 'hidra') return this.updateBossM3(b, dt, dx, dz, dist);
     const speed = (broken ? 2.75 : 1.9) * this.difficulty;
     switch (b.state) {
       case 'perseguir':
@@ -1011,8 +1053,8 @@ export class Game {
     c.t += dt;
     const b = this.room.boss;
     if (c.kind === 'boss') {
-      this.viewTarget = this.focusView(b.x, b.z, 3.4);
-      if (c.t > 0.6 && !c.shown) { c.shown = true; this.ui.bigText(b.name, 1800, 'boss'); this.shake = 0.5; sfx(b.type === 'anciao' ? 'arvore' : b.type === 'maeteia' ? 'aranha' : 'rugido'); }
+      this.viewTarget = this.focusView(b.hx ?? b.x, b.hz ?? b.z, b.type === 'hidra' ? 4.2 : 3.4);
+      if (c.t > 0.6 && !c.shown) { c.shown = true; this.ui.bigText(b.name, 1800, 'boss'); this.shake = 0.5; sfx({ anciao: 'arvore', maeteia: 'aranha', saporei: 'sapoRei', hidra: 'hidra' }[b.type] || 'rugido'); }
       if (b.type === 'capitao') b.m.arms.forEach((a) => (a.rotation.x = -2.6 + Math.sin(c.t * 10) * 0.2));
       if (c.t > 2.6) {
         this.cine = null;
@@ -1020,6 +1062,7 @@ export class Game {
         this.viewTarget = this.fitRoom(this.room);
         if (b.type === 'capitao') this.spawnHorde(3, true);
         if (b.type === 'maeteia') this.spawnBabies(2);
+        if (b.type === 'hidra') this.ui.toast('Só a cabeça que BRILHA leva dano! Derrube as três em sequência.', 2600);
         this.spawnArenaItem();
       }
     } else if (c.kind === 'bossDown') {
@@ -1028,6 +1071,8 @@ export class Game {
         this.cine = null;
         this.viewTarget = this.fitRoom(this.room);
         if (c.type === 'maeteia') this.freeFeligon();
+        else if (c.type === 'saporei') this.ui.dialog([{ who: 'Sapo-Lodo Rei', text: 'Croac... minha coroa... o lodo me deixou tão bravo.' }, { who: 'Sapo-Lodo Rei', text: 'Os canos que trazem o lodo começam logo ali. Sigam o barulho!' }, { who: 'Feligon', text: 'Ouviu? Tem alguém batendo nos canos!' }], () => {});
+        else if (c.type === 'hidra') this.ui.dialog([{ who: 'Dait', text: 'A Hidra virou poça! Os canos do Morgrave pararam!' }, { who: 'Dait', text: 'Mas ele vai fazer mais lodo lá no alto da TORRE DO ALQUIMISTA.' }, { who: 'Lunerb', text: 'Então a gente sobe essa torre. Juntos!' }], () => {});
         else if (c.type === 'anciao') this.ui.dialog([{ who: 'Ancião Oco', text: 'Ahh... obrigado, crianças. O lodo saiu de mim.' }, { who: 'Ancião Oco', text: 'Ele vem do pântano. Alguém está despejando lodo nos rios...' }, { who: 'Lunerb', text: 'Então o caminho de casa passa pelo pântano. Vamos!' }], () => {});
         else this.ui.dialog([{ who: 'Lunerb', text: 'Consegui! O portão da saída abriu!' }], () => {});
       }
@@ -1078,7 +1123,7 @@ export class Game {
     this.ui.bossBar(null);
     this.fx.armorPieces(b.x, b.z, 2);
     this.cine = { kind: 'bossDown', t: 0, type: b.type };
-    this.ui.bigText(`${b.name} DERROTAD${b.type === 'maeteia' ? 'A' : 'O'}!`, 2000, 'boss');
+    this.ui.bigText(`${b.name} DERROTAD${b.type === 'maeteia' || b.type === 'hidra' ? 'A' : 'O'}!`, 2000, 'boss');
     sfx('clang');
     for (let i = 0; i < 12; i++) this.dropCrystal(b.x, b.z);
     for (const e of this.room.enemies) if (e.alive) this.kill(e);
@@ -1198,7 +1243,10 @@ export class Game {
     const dPortal = portal ? Math.hypot(ox + portal.lx - p.x, oz + portal.lz - p.z) : 99;
     const dBack = backG ? Math.hypot(ox + backG.lx - p.x, oz + backG.lz - p.z) : 99;
     if (!this.gateArmed && dPortal > 1.15 && dBack > 1.15) this.gateArmed = true;
-    if (this.gateArmed && dPortal < 0.75) this.startTransition(room.i + 1);
+    if (this.gateArmed && dPortal < 0.75) {
+      if (portal.locked) { if (!this.lockMsg) { this.lockMsg = true; this.ui.toast('A porta está trancada! Salve quem está na jaula.'); setTimeout(() => (this.lockMsg = false), 3000); } }
+      else this.startTransition(room.i + 1);
+    }
     else if (this.gateArmed && dBack < 0.6) this.startTransition(room.i - 1, true);
     const mer = room.vis.merchant;
     if (mer && mer.here) {
@@ -1208,7 +1256,7 @@ export class Game {
     }
     const ex = room.vis.exit;
     if (ex && Math.hypot(ox + ex.lx - p.x, oz + ex.lz - p.z) < 0.75) {
-      if (ex.locked) { if (!this.lockMsg) { this.lockMsg = true; this.ui.toast('O portão está trancado! Derrote o Capitão de Ferro.'); setTimeout(() => (this.lockMsg = false), 3000); } }
+      if (ex.locked) { if (!this.lockMsg) { this.lockMsg = true; this.ui.toast(`O portão está trancado! Derrote ${room.boss ? room.boss.name : 'o chefão'}.`); setTimeout(() => (this.lockMsg = false), 3000); } }
       else this.finish(false);
     }
     // prólogo: a beira do lago de lodo
@@ -1332,6 +1380,8 @@ export class Game {
       g = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 5).rotateX(Math.PI / 2), material(0xe8d8a0, 'glow'));
     } else if (kind === 'teia') {
       g = new THREE.Mesh(BALL, material(0xf2f2ff, 'glow', 0.85)); g.scale.setScalar(0.17);
+    } else if (kind === 'lodo') {
+      g = new THREE.Mesh(BALL, material(0x5cdf3a, 'glow', 0.9)); g.scale.setScalar(0.2);
     } else {
       g = new THREE.Mesh(BALL, material(0x7a4a22, 'lit')); g.scale.set(0.14, 0.18, 0.14);
     }
@@ -1355,10 +1405,11 @@ export class Game {
         if (p.dash <= 0) {
           this.hurtPlayer(1, s.dx, s.dz);
           if (s.kind === 'teia') { p.slowT = 2; this.ui.toast('Preso na teia! Mais devagar...', 1200); }
+          if (s.kind === 'lodo') { p.slowT = 1.2; }
         }
       }
       if (dead) {
-        this.fx.sparks(s.x, 0.8, s.z, s.kind === 'teia' ? 0xffffff : 0xc8a060, 4);
+        this.fx.sparks(s.x, 0.8, s.z, s.kind === 'teia' ? 0xffffff : s.kind === 'lodo' ? 0x7dff3a : 0xc8a060, 4);
         this.scene.remove(s.g);
         this.eshots.splice(i, 1);
       }
@@ -1511,13 +1562,14 @@ export class Game {
   }
 
   // ---------------- Feligon: o amigo ----------------
-  spawnFriend(x, z) {
-    const f = this.makeHero('feligon', this.teamWeapons());
+  spawnFriend(x, z, id = 'feligon') {
+    if (this.heroes.some((h) => h.id === id)) return this.heroes.find((h) => h.id === id);
+    const f = this.makeHero(id, this.teamWeapons());
     f.x = x; f.z = z;
     this.heroes.push(f);
-    this.friend = f;
     this.ui.setControls({ attack: true, turbo: true, friend: true });
     this.refreshPortraits();
+    return f;
   }
 
   freeFeligon() {
@@ -1529,7 +1581,7 @@ export class Game {
       const x = room.off.x + co.lx, z = room.off.z + co.lz;
       this.fx.smoke(x, z, 1.5);
       for (let i = 0; i < 20; i++) this.fx.spawn(x, 0.8, z, { color: 0xf2f2ff, size: 0.12, vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 2, vz: (Math.random() - 0.5) * 4, life: 1, gravity: 6 });
-      if (!this.friend) { this.spawnFriend(x, z); this.placeFriendNear(x, z, false); }
+      if (!this.heroes.some((h) => h.id === 'feligon')) { const f = this.spawnFriend(x, z, 'feligon'); this.placeFriendNear(x, z, false, f); }
     }
     if (already) { this.ui.dialog([{ who: 'Feligon', text: 'Esse casulo de novo? Ainda bem que eu já estava com você!' }], () => {}); return; }
     this.save.friends.push('feligon');
@@ -1557,14 +1609,15 @@ export class Game {
       this.taps.push(this.time);
       if (this.taps.length >= 3) { this.taps = []; this.switchHero(); return; }
     }
-    const f = this.friend;
-    if (!f) return;
+    const hs = this.helpers();
+    if (!hs.length) return;
+    const ready = hs.filter((h) => h.cd <= 0);
     // segurar (mais de um instante) começa a mira do comando
     if (inp.special && !this.friendAim && !this.aim && !this.beam && this.time - (this.specialDownT || 0) > 0.22) {
-      if (f.cd > 0) { if (!this.cdWarned) { this.cdWarned = true; this.ui.toast(`${f.name} está recuperando o fôlego...`, 1000); } }
+      if (!ready.length) { if (!this.cdWarned) { this.cdWarned = true; this.ui.toast(hs.length > 1 ? 'Os amigos estão recuperando o fôlego...' : `${hs[0].name} está recuperando o fôlego...`, 1000); } }
       else {
         this.friendAim = { tx: p.x + Math.sin(p.face) * 2.5, tz: p.z + Math.cos(p.face) * 2.5 };
-        this.friendReticle.material.color.setHex(f.id === 'feligon' ? 0x7dff6a : 0xb070ff);
+        this.friendReticle.material.color.setHex(POWER[ready[0].id].color);
         this.friendReticle.group.visible = true;
         sfx('mira');
       }
@@ -1585,28 +1638,34 @@ export class Game {
     this.friendReticle.group.scale.setScalar(2.4 * (1 + Math.sin(this.time * 10) * 0.06));
     this.friendReticle.group.rotation.y -= dt * 2;
     if (!inp.special) {
-      f.cmd = { tx: a.tx, tz: a.tz, t: 0 };
-      f.cd = 9;
+      // todos os amigos prontos atacam juntos no alvo
+      ready.forEach((f, i) => { f.cmd = { tx: a.tx + (i ? Math.cos(i * 2.4) * 0.6 : 0), tz: a.tz + (i ? Math.sin(i * 2.4) * 0.6 : 0), t: 0 }; f.cd = 9; });
       this.friendAim = null;
       this.friendReticle.group.visible = false;
       p.meleeT = 0.22; p.meleeSide = 1;
-      this.ui.toast(f.id === 'feligon' ? '🌿 Feligon, RAÍZES!' : '⚡ Lunerb, RAIO NEGRO!', 900);
+      this.ui.toast(ready.map((f) => POWER[f.id].call).join('  '), 1000);
     }
   }
 
-  updateFriend(dt) {
-    const f = this.friend, p = this.player;
-    this.ui.friendCooldown(f.cd);
+  updateFriend(dt, f = this.friend, idx = 0) {
+    const p = this.player;
+    if (!f) return;
     f.atkCd = Math.max(0, f.atkCd - dt);
     f.inv = Math.max(0, f.inv - dt);
     if (f.restT > 0) { f.restT -= dt; f.moving = false; return; }
     let tx = null, tz = null, speed = 4.8, target = null;
     // ponto de retaguarda: um pouco atrás do Lunerb
-    const bx = p.x - Math.sin(p.face) * 1.5, bz = p.z - Math.cos(p.face) * 1.5;
+    const side = idx === 0 ? 0 : idx % 2 ? 1.1 : -1.1;
+    const bx = p.x - Math.sin(p.face) * 1.5 + Math.cos(p.face) * side, bz = p.z - Math.cos(p.face) * 1.5 - Math.sin(p.face) * side;
     if (f.cmd) {
       f.cmd.t += dt;
       tx = f.cmd.tx; tz = f.cmd.tz; speed = 9;
-      if (Math.hypot(tx - f.x, tz - f.z) < 0.5 || f.cmd.t > 2.2) { if (f.id === 'feligon') this.castRoots(f.cmd.tx, f.cmd.tz); else this.castDarkBolt(f.cmd.tx, f.cmd.tz); f.cmd = null; }
+      if (Math.hypot(tx - f.x, tz - f.z) < 0.5 || f.cmd.t > 2.2) {
+        if (f.id === 'feligon') this.castRoots(f.cmd.tx, f.cmd.tz);
+        else if (f.id === 'dait') this.castFreeze(f.cmd.tx, f.cmd.tz);
+        else this.castDarkBolt(f.cmd.tx, f.cmd.tz);
+        f.cmd = null;
+      }
     } else {
       // atira de longe no monstro mais perto (tiro fraco: metade da bola de fogo do Lunerb)
       let best = null, bd = 6.5;
@@ -1633,7 +1692,7 @@ export class Game {
       if (!target || f.cmd) f.face = turnTo(f.face, Math.atan2(ddx, ddz), dt * 12);
       // ficou preso mesmo assim? aparece de novo atrás do Lunerb
       f.stuckT = Math.hypot(f.x - ox, f.z - oz) < speed * dt * 0.25 ? (f.stuckT || 0) + dt : 0;
-      if (f.stuckT > 1 || Math.hypot(f.x - p.x, f.z - p.z) > 10) this.placeFriendNear(p.x, p.z, true);
+      if (f.stuckT > 1 || Math.hypot(f.x - p.x, f.z - p.z) > 10) this.placeFriendNear(p.x, p.z, true, f);
     } else f.stuckT = 0;
     // monstro deu bote no Feligon: ele cai e descansa um pouquinho (não se machuca de verdade)
     f.hitCheck -= dt;
@@ -1744,7 +1803,8 @@ export class Game {
     for (let tz = Math.max(0, cz - 3); tz <= Math.min(room.h - 1, cz + 3); tz++) for (let tx = Math.max(0, cx - 3); tx <= Math.min(room.w - 1, cx + 3); tx++) {
       if (this.solidLocal(tx, tz, 'player') || this.tiles[tz][tx] === 'L' || (tx === cx && tz === cz)) continue;
       const t = this.tiles[tz][tx];
-      if (t === 'X' || t === 'E') continue;
+      if (t === 'X' || t === 'E' || t === 'q' || t === 'b') continue;
+      if (this.heroes.some((o) => o !== f && !o.fainted && Math.hypot(o.x - (room.off.x + tx + 0.5), o.z - (room.off.z + tz + 0.5)) < 0.7)) continue;
       const d = Math.hypot(tx - cx, tz - cz);
       if (d < bd) { bd = d; best = [tx, tz]; }
     }
@@ -2337,11 +2397,16 @@ export class Game {
       if (e.type === 'morcego') e.m.wings.forEach((wg, i) => (wg.rotation.z = Math.sin(this.time * 16) * 0.7 * (i ? -1 : 1)));
       if (e.type === 'cogumelo') { e.m.legs.forEach((l, i) => (l.rotation.x = Math.sin(this.time * 9 + i * 3) * (e.moving ? 0.5 : 0))); const sw = e.puff ? 1 + e.puff.t * 0.7 : 1; e.m.cap.scale.set(sw, sw * 0.9, sw); }
       if (e.type === 'espinho') { const k = e.aimT > 0 ? 1.25 : 1 + Math.sin(this.time * 3) * 0.04; e.m.head.scale.setScalar(k); }
-      if (e.rootT > 0) this.rootVisual(e); else if (e.rootMesh) e.rootMesh.visible = false;
+      this.animateMundo3Enemy(e);
+      if (e.iceT > 0) { e.iceT = Math.max(0, e.iceT - dt); this.iceVisual(e); if (e.rootMesh) e.rootMesh.visible = false; }
+      else { if (e.iceMesh) e.iceMesh.visible = false; if (e.rootT > 0) this.rootVisual(e); else if (e.rootMesh) e.rootMesh.visible = false; }
     }
     const b = this.room.boss;
     if (b && b.m.glow) { b.m.glow.visible = b.alive && b.state !== 'dormindo'; b.m.glow.position.set(b.x, 0.03, b.z); }
-    if (b && b.alive) {
+    if (b && b.alive && (b.type === 'saporei' || b.type === 'hidra')) {
+      if (b.iceT > 0) b.iceT = Math.max(0, b.iceT - dt);
+      this.animateBossM3(b, dt);
+    } else if (b && b.alive) {
       const r = b.m.root;
       r.position.set(b.x, 0, b.z);
       r.rotation.y = b.face;
@@ -2423,3 +2488,6 @@ function turnTo(a, b, k) {
   while (d < -Math.PI) d += Math.PI * 2;
   return a + d * Math.min(1, k);
 }
+
+// Mundo 3 (pântano, canos, Dait) mora em mundo3.js
+Object.assign(Game.prototype, Mundo3);

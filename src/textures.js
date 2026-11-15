@@ -145,6 +145,44 @@ function wood(seed = 13) {
   return toTex(c);
 }
 
+// Lama do pântano (escura, com poças)
+function mud(seed = 17) {
+  const S = 256, [c, ctx] = canvas(S), r = rng(seed);
+  ctx.fillStyle = '#4a3f2c'; ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 140; i++) {
+    ctx.fillStyle = `rgba(${40 + r() * 40},${38 + r() * 35},${22 + r() * 20},0.6)`;
+    ctx.beginPath(); ctx.ellipse(r() * S, r() * S, 4 + r() * 12, 3 + r() * 8, r() * 3, 0, 7); ctx.fill();
+  }
+  for (let i = 0; i < 14; i++) {
+    ctx.fillStyle = `rgba(70,${120 + r() * 60},50,0.35)`;
+    ctx.beginPath(); ctx.ellipse(r() * S, r() * S, 6 + r() * 10, 3 + r() * 5, r() * 3, 0, 7); ctx.fill();
+  }
+  noise(ctx, S, r, 1800);
+  return toTex(c);
+}
+
+// Chão de chapas de metal com rebites (o encanamento)
+function metal(seed = 19, rust = false) {
+  const S = 256, [c, ctx] = canvas(S), r = rng(seed);
+  ctx.fillStyle = '#1a1c1f'; ctx.fillRect(0, 0, S, S);
+  const cell = 64;
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+    const k = 0.8 + r() * 0.3;
+    ctx.fillStyle = `rgb(${Math.floor(98 * k)},${Math.floor(104 * k)},${Math.floor(110 * k)})`;
+    rr(ctx, x * cell + 2, y * cell + 2, cell - 4, cell - 4, 6); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(x * cell + 6, y * cell + 6, cell - 12, 8);
+    ctx.fillStyle = '#3a3d42';
+    for (const [a, b] of [[8, 8], [cell - 10, 8], [8, cell - 10], [cell - 10, cell - 10]]) { ctx.beginPath(); ctx.arc(x * cell + a, y * cell + b, 2.5, 0, 7); ctx.fill(); }
+    if (rust || r() < 0.3) {
+      ctx.fillStyle = `rgba(${150 + r() * 40},${70 + r() * 30},30,0.45)`;
+      ctx.beginPath(); ctx.ellipse(x * cell + r() * cell, y * cell + r() * cell, 6 + r() * 12, 4 + r() * 8, r() * 3, 0, 7); ctx.fill();
+    }
+  }
+  noise(ctx, S, r, 2200);
+  return toTex(c);
+}
+
 // Fundo infinito escuro (degradê com estrelinhas)
 function background(top = '#1d2a36', bottom = '#06080d') {
   const [c, ctx] = canvas(512);
@@ -170,6 +208,12 @@ const MAKERS = {
   wood: () => wood(),
   bgForest: () => background('#1f3a3a', '#05090b'),
   bgCastle: () => background('#2a2238', '#060509'),
+  mud: () => mud(),
+  metal: () => metal(),
+  metalRust: () => metal(23, true),
+  brick: () => stoneBlocks(29, [128, 84, 68]),
+  bgSwamp: () => background('#24342a', '#040806'),
+  bgPipes: () => background('#2c2a24', '#060504'),
   bgMenu: () => background('#2a2f45', '#07060b'),
 };
 

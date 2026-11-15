@@ -226,9 +226,15 @@ const ENDING_W2 = [
   { text: 'Agora o Lunerb tem um amigo de verdade: o Feligon!' },
   { text: 'O lodo vem do pântano... alguém está despejando lodo nos rios. O caminho de casa passa por lá.' },
 ];
+const ENDING_W3 = [
+  { text: 'A Hidra de Lodo virou uma poça inofensiva, e os canos ficaram em silêncio.' },
+  { text: 'Agora são três: Lunerb, Feligon e Dait, que conhece todos os segredos do Morgrave.' },
+  { text: 'Lá longe, no alto de uma torre torta, uma luz verde pisca. É lá que o lodo nasce.' },
+];
 const ENDINGS = {
   2: { world: 1, slides: ENDING_W1, next: 'Continua no Mundo 2: Bosque dos Sussurros...' },
   4: { world: 2, slides: ENDING_W2, next: 'Continua no Mundo 3: Pântano do Lodo Negro...' },
+  6: { world: 3, slides: ENDING_W3, next: 'Continua no Mundo 4: Torre do Alquimista...' },
 };
 let story = null;
 function playStory(slides, done) {
